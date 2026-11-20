@@ -22,6 +22,11 @@ export type Lang = "ar" | "en";
 
 const ar = {
   "brand.name": "معمار",
+  "notifications.changesSaved": "تم حفظ التغييرات بنجاح",
+  "notifications.emailUpdated": "تم تحديث البريد الإلكتروني بنجاح",
+  "notifications.accountUpdated": "تم تحديث البريد الإلكتروني ونوع الحساب بنجاح",
+  "notifications.passwordUpdated": "تم تغيير كلمة المرور بنجاح",
+  "notifications.operationFailed": "تعذر إكمال العملية",
 
   "common.email": "البريد الإلكتروني",
   "common.password": "كلمة المرور",
@@ -143,6 +148,11 @@ export type TranslationKey = keyof typeof ar;
 
 const en: Record<TranslationKey, string> = {
   "brand.name": "معمار",
+  "notifications.changesSaved": "Changes saved successfully",
+  "notifications.emailUpdated": "Email updated successfully",
+  "notifications.accountUpdated": "Email and account type updated successfully",
+  "notifications.passwordUpdated": "Password changed successfully",
+  "notifications.operationFailed": "Unable to complete the operation",
 
   "common.email": "Email",
   "common.password": "Password",

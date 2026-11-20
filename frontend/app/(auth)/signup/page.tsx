@@ -62,11 +62,10 @@ export default function SignupPage() {
      alert(error.message);
      return;
    }
-
-   alert("تم إرسال طلب التسجيل. تحققي من بريدك الإلكتروني لتفعيل الحساب.");
-   router.push("/login");
-  } 
-
+     router.push(
+      `/verify-email?email=${encodeURIComponent(email.trim())}`
+    );
+  }
 
   return (
     <Card className="w-full max-w-md sm:p-8">

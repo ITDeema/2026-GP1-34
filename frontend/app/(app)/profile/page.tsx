@@ -9,6 +9,7 @@ import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Input from "@/components/Input";
 import Modal from "@/components/Modal";
+import { toast } from "sonner";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
@@ -19,7 +20,12 @@ import {
   getPasswordRequirements,
 } from "@/lib/validation";
 
-type Dialog = "logout" | "delete" | "changePassword" | null;
+type Dialog =
+  | "logout"
+  | "delete"
+  | "changePassword"
+  | "verifyEmail"
+  | null;
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -53,6 +59,13 @@ export default function ProfilePage() {
  const [draftEmail, setDraftEmail] = useState("");
  const [draftRole, setDraftRole] = useState<"homeowner" | "architect">("homeowner");
  const [emailError, setEmailError] = useState("");
+ const [pendingEmail, setPendingEmail] = useState("");
+const [oldEmailCode, setOldEmailCode] = useState("");
+const [emailStep, setEmailStep] = useState<1 | 2>(1);
+const [newEmailCode, setNewEmailCode] = useState("");
+const [emailVerifyError, setEmailVerifyError] = useState("");
+const [emailVerifying, setEmailVerifying] = useState(false);
+const [accountSaving, setAccountSaving] = useState(false);
 
   
 useEffect(() => {
@@ -109,7 +122,7 @@ useEffect(() => {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      alert("يرجى تسجيل الدخول مرة أخرى.");
+      toast.error(t("notifications.loginRequired"));
       return;
     }
 
@@ -121,7 +134,7 @@ useEffect(() => {
       .single();
 
     if (error || !data) {
-      alert("تعذر حفظ اللغة، حاولي مرة أخرى.");
+      toast.error(t("notifications.languageSaveFailed"));
       console.error("Language update error:", error);
       return;
     }
@@ -145,7 +158,39 @@ useEffect(() => {
       return;
     }
 
-    // Save the account type in profiles
+  
+    // Check whether the email needs to be changed
+    const newEmail = draftEmail.trim().toLowerCase();
+    const currentEmail = (user.email ?? "").toLowerCase();
+
+    if (newEmail !== currentEmail) {
+      // Request email change verification
+      const { error: authError } =
+        await supabase.auth.updateUser({
+          email: newEmail,
+        });
+
+      if (authError) {
+        setEmailError(
+          authError.code === "over_email_send_rate_limit" ||
+          authError.message.toLowerCase().includes("rate limit")
+             ? t("profile.emailRateLimit")
+            : authError.message
+        );
+        return;
+      }
+
+      // Open verification modal at step 1
+      setPendingEmail(newEmail);
+      setEmailStep(1);
+      setOldEmailCode("");
+      setNewEmailCode("");
+      setEmailVerifyError("");
+      setDialog("verifyEmail");
+      return;
+    }
+
+    // If only the role changed, save it immediately
     const { error: profileError } = await supabase
       .from("profiles")
       .update({ role: draftRole })
@@ -156,33 +201,13 @@ useEffect(() => {
       return;
     }
 
-    // Update email through Supabase Auth
-    if (draftEmail.trim() !== user.email) {
-      const { error: authError } =
-        await supabase.auth.updateUser({
-          email: draftEmail.trim(),
-        });
-
-      if (authError) {
-        setEmailError(
-        authError.code === "over_email_send_rate_limit" ||
-       authError.message.toLowerCase().includes("rate limit")
-       ? "تم تجاوز الحد المسموح لإرسال رسائل البريد الإلكتروني. حاولي مرة أخرى لاحقًا."
-       : authError.message
-      );
-       return;
-      }
-
-      alert("تم طلب تغيير البريد الإلكتروني. تحققي من رسائل التأكيد.");
-    }
-
     setAccountRole(draftRole);
     setAccountEmail(user.email ?? "");
     setEmailError("");
     setEditingAccount(false);
+    toast.success(t("notifications.changesSaved"));
   }
 
-  
 async function validatePasswordChange() {
   if (!currentPassword || !newPassword || !confirmPassword) {
     setPasswordError(t("profile.passwordFieldsRequired"));
@@ -238,7 +263,7 @@ async function validatePasswordChange() {
   }
 
   closeDialog();
-  alert("تم تغيير كلمة المرور بنجاح.");
+  toast.success(t("notifications.passwordUpdated"));
 }
 
 
@@ -255,7 +280,7 @@ async function validatePasswordChange() {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      alert("تعذر تسجيل الخروج، حاولي مرة أخرى.");
+      toast.error(t("notifications.logoutFailed"));
       return;
     }
 
@@ -271,7 +296,7 @@ async function validatePasswordChange() {
   } = await supabase.auth.getSession();
 
   if (sessionError || !session) {
-    alert("يرجى تسجيل الدخول مرة أخرى.");
+    toast.error(t("notifications.loginRequired"));
     return;
   }
 
@@ -287,7 +312,7 @@ async function validatePasswordChange() {
   });
 
   if (!response.ok) {
-    alert("تعذر حذف الحساب. تأكدي من كلمة المرور وحاولي مرة أخرى.");
+    toast.error(t("notifications.deleteAccountFailed"));
     return;
   }
 
@@ -297,8 +322,121 @@ async function validatePasswordChange() {
   router.refresh();
 }
 
+async function finishEmailChange(
+  user: { id: string; email?: string }
+) {
+  const confirmedEmail = user.email ?? "";
+
+  if (confirmedEmail.toLowerCase() !== pendingEmail) {
+    setEmailVerifyError(t("profile.emailChangeIncomplete"));
+    return;
+  }
+
+  // Save the selected role after email confirmation
+  const { data: updatedProfile, error: roleError } = await supabase
+    .from("profiles")
+    .update({ role: draftRole })
+    .eq("userID", user.id)
+    .select("role")
+    .single();
+
+  if (roleError || !updatedProfile) {
+    setAccountEmail(confirmedEmail);
+    setDraftEmail(confirmedEmail);
+    setEmailVerifyError(t("profile.emailChangedRoleFailed"));
+    return;
+  }
+
+  setAccountRole(updatedProfile.role);
+  setAccountEmail(confirmedEmail);
+  setDraftEmail(confirmedEmail);
+  setEmailError("");
+  setEditingAccount(false);
+  setDialog(null);
+  setPendingEmail("");
+  setOldEmailCode("");
+  setNewEmailCode("");
+  setEmailStep(1);
+
+  toast.success(t("notifications.accountUpdated"));
+}
+
+
+async function verifyEmailChange() {
+  if (emailVerifying) return;
+
+  setEmailVerifying(true);
+  setEmailVerifyError("");
+
+  try {
+    const { data: currentData, error: currentError } =
+      await supabase.auth.getUser();
+
+    if (currentError || !currentData.user) {
+      setEmailVerifyError(t("profile.accountVerificationFailed"));
+      return;
+    }
+
+    // Email may already be confirmed by Supabase
+    if (currentData.user.email?.toLowerCase() === pendingEmail) {
+      await finishEmailChange(currentData.user);
+      return;
+    }
+
+    const code = emailStep === 1 ? oldEmailCode : newEmailCode;
+
+    if (!/^\d{6}$/.test(code)) {
+      setEmailVerifyError(t("profile.enterSixDigitCode"));
+      return;
+    }
+
+    const { error: verifyError } =
+      await supabase.auth.verifyOtp({
+        email: emailStep === 1 ? accountEmail : pendingEmail,
+        token: code,
+        type: "email_change",
+      });
+
+    // Recheck actual email state after verification
+    const { data: latestData, error: latestError } =
+      await supabase.auth.getUser();
+
+    if (
+      !latestError &&
+      latestData.user?.email?.toLowerCase() === pendingEmail
+    ) {
+      await finishEmailChange(latestData.user);
+      return;
+    }
+
+    if (verifyError) {
+      setEmailVerifyError(
+        emailStep === 1
+          ? t("profile.oldEmailCodeInvalid")
+           : t("profile.newEmailCodeInvalid")
+      );
+      return;
+    }
+
+    if (emailStep === 1) {
+      // Old code accepted; never verify it again
+      setEmailStep(2);
+      setEmailVerifyError("");
+      return;
+    }
+
+    setEmailVerifyError(t("profile.emailUpdatePending"));
+    
+  } catch {
+    setEmailVerifyError(t("profile.emailVerificationFailed"));
+  } finally {
+    setEmailVerifying(false);
+  }
+}
+
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-8">
+     
 
       <div className="flex items-center gap-4">
         <div
@@ -451,6 +589,98 @@ async function validatePasswordChange() {
           </Button>
         </div>
       </Card>
+
+<Modal
+  open={dialog === "verifyEmail"}
+  onClose={() => {
+    if (!emailVerifying) setDialog(null);
+  }}
+  title={t("profile.verifyEmailTitle")}
+>
+  <div className="flex flex-col gap-4">
+    <p className="text-sm font-semibold text-navy-900">
+      الخطوة {emailStep} من 2
+    </p>
+
+    <p className="text-sm text-navy-900/70">
+      {emailStep === 1
+        ? "أرسلنا رمز تحقق إلى بريدك الإلكتروني القديم. أدخلي الرمز للانتقال إلى الخطوة التالية."
+        : "تم قبول رمز البريد القديم. أدخلي الآن الرمز المرسل إلى بريدك الإلكتروني الجديد."}
+    </p>
+
+    {emailStep === 1 ? (
+      <Input
+        label="رمز البريد الإلكتروني القديم"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        dir="ltr"
+        maxLength={6}
+        placeholder="000000"
+        value={oldEmailCode}
+        onChange={(e) => {
+          setOldEmailCode(
+            e.target.value.replace(/\D/g, "").slice(0, 6)
+          );
+          setEmailVerifyError("");
+        }}
+        disabled={emailVerifying}
+      />
+    ) : (
+      <Input
+        label="رمز البريد الإلكتروني الجديد"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        dir="ltr"
+        maxLength={6}
+        placeholder="000000"
+        value={newEmailCode}
+        onChange={(e) => {
+          setNewEmailCode(
+            e.target.value.replace(/\D/g, "").slice(0, 6)
+          );
+          setEmailVerifyError("");
+        }}
+        disabled={emailVerifying}
+      />
+    )}
+
+    {emailVerifyError && (
+      <p role="alert" className="text-sm text-danger-500">
+        {emailVerifyError}
+      </p>
+    )}
+
+    <div className="flex flex-wrap gap-3">
+      <Button
+        onClick={verifyEmailChange}
+        disabled={
+          emailVerifying ||
+          (emailStep === 1
+            ? oldEmailCode.length !== 6
+            : newEmailCode.length !== 6)
+        }
+      >
+        {emailVerifying
+          ? "جارٍ التحقق..."
+          : emailStep === 1
+            ? "التالي"
+            : "تأكيد تغيير البريد"}
+      </Button>
+
+      <Button
+        variant="secondary"
+        disabled={emailVerifying}
+        onClick={() => setDialog(null)}
+      >
+        إلغاء
+      </Button>
+    </div>
+  </div>
+</Modal>
+
+
 
       <Modal
         open={dialog === "changePassword"}
