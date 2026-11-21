@@ -99,15 +99,20 @@ export type FacadeNeighbours = {
   use: string | null; // adjoining parcel use (ParcelSub), "شارع", or "لا يوجد" (no edge this way); null if unknown
   across: string | null; // use across the street, or "لا يوجد"
   streetWidth: number | null; // m
+  streetWidthEstimated?: boolean; // true = the street has no width in the layer: its type's width (defaults.py)
   streetClass: string | null;
   streetName: string | null;
   streetDistance?: number | null; // m from this side of the plot to the edge of the street in front of it (older backends do not send it)
   nearestDistance: number; // m from this side of the plot to the nearest building straight in front of it; 300 = none within 300 m
   nearestHeight: number; // m, 0 = none
+  useEstimated?: boolean; // true = the use is not known ("غير محدد"): shown as unknown, estimated data
+  modelUse?: string; // the use the model takes: the same, or "سكني" when it is not known
+  modelAcross?: string;
 };
 
 export type FacadeIndicatorsResponse = {
   mainFacade: FacadeDirection;
+  mainFacadeEstimated?: boolean; // true = no street runs along the plot (nearest street in front, or longest edge)
   buildingSource: "measured_footprint" | "regulation_envelope" | "user_design";
   buildingHeight: number; // m
   site: {

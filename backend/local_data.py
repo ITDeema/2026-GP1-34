@@ -129,11 +129,9 @@ def _streets():
         raw = pd.to_numeric(df[wcol], errors="coerce") if wcol else pd.Series(np.nan, index=df.index)
         raw = raw.where(raw > 0)
         cls = df[ccol].astype(str) if ccol else pd.Series("", index=df.index)
-        # the notebook: the width, else the median of its class over the city, else the median of all
-        W = raw.fillna(raw.groupby(cls).transform("median")).fillna(raw.median()).fillna(0.0)
         g = df.geometry.to_numpy()
         _cache["streets"] = {
-            "g": g, "raw": raw.to_numpy(float), "W": W.to_numpy(float), "cls": cls.to_numpy(object),
+            "g": g, "raw": raw.to_numpy(float), "cls": cls.to_numpy(object),
             "main": df[mcol].astype(str).to_numpy(object) if mcol else np.full(len(df), None, dtype=object),
             "name": df[ncol].to_numpy(object) if ncol else np.full(len(df), None, dtype=object),
             "tree": shapely.STRtree(g),
@@ -231,8 +229,8 @@ def parcels_in(area, subs: list[str] | None = None) -> tuple[np.ndarray, np.ndar
 
 
 def street_features(area) -> list[dict]:
-    """The streets that touch `area`, in the same shape as an ArcGIS answer (attributes + paths), plus "W":
-    the width filled as in the notebook (city medians)."""
+    """The streets that touch `area`, in the same shape as an ArcGIS answer (attributes + paths). A missing width
+    is filled by the caller (defaults.py), the same as for ArcGIS."""
     s = streets()
     out = []
     for i in s["tree"].query(area, predicate="intersects"):
@@ -244,7 +242,7 @@ def street_features(area) -> list[dict]:
         raw = s["raw"][i]
         out.append({
             "attributes": {
-                "STREETWIDTH": None if np.isnan(raw) else float(raw), "W": float(s["W"][i]),
+                "STREETWIDTH": None if np.isnan(raw) else float(raw),
                 "SUBTYPECLASS": s["cls"][i], "STREETCLASS": s["main"][i], "STREETANAME": s["name"][i],
             },
             "geometry": {"paths": paths},

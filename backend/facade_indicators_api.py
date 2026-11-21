@@ -67,6 +67,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
+import defaults
 import local_data
 
 router = APIRouter()
@@ -92,13 +93,13 @@ MIN_AREA = 20.0  # m2, smaller GBA shapes are not a house
 SEC_C = (np.arange(NSEC) + 0.5) * 360 / NSEC  # middle of each sector
 SEASONS = {"Summer": ([6, 7, 8], 92), "Winter": ([12, 1, 2], 90)}
 NB_SETBACK, COVER_MAX = 1.5, 0.75  # regulations 4-1-4 and 4-1-1
-VACANT_H = 14.0  # m, the height of a vacant plot's building
+VACANT_H = defaults.HEIGHT  # m, the height of a vacant plot's building
 FALLBACK_R = 50.0  # m, the street in front of a side when no street touches the plot
 H_DESIGN = 14.0  # m, the highest height the user can enter
 
 # ---- the neighbours card (not the indicators)
 SEARCH_RADIUS = 300.0
-IMPUTED_NEIGHBOR_H = 14.0
+IMPUTED_NEIGHBOR_H = defaults.HEIGHT
 
 
 class DataFileError(RuntimeError):
@@ -239,8 +240,10 @@ def street_table(features: list[dict]) -> pd.DataFrame:
     st = pd.DataFrame(rows, columns=["STREETWIDTH", "STREETCLASS", "SUBTYPECLASS", "STREETANAME", "geometry"])
     st["STREETWIDTH"] = pd.to_numeric(st["STREETWIDTH"], errors="coerce")
     st = st[~st["STREETCLASS"].isin(EXCLUDE_CLASS) & ~st["SUBTYPECLASS"].isin(EXCLUDE_CLASS)].copy()
-    class_median = st.groupby("SUBTYPECLASS")["STREETWIDTH"].median()
-    st["W_DETECT"] = st["STREETWIDTH"].fillna(st["SUBTYPECLASS"].map(class_median))
+    # a street without a width: the fixed width of its type (defaults.py), else the width of any street
+    st["W_DETECT"] = st["STREETWIDTH"].where(st["STREETWIDTH"] > 0)
+    st["W_DETECT"] = st["W_DETECT"].fillna(st["SUBTYPECLASS"].astype(str).map(defaults.STREET_WIDTH))
+    st["W_DETECT"] = st["W_DETECT"].fillna(defaults.STREET_WIDTH_ANY)
     return st[st["W_DETECT"].notna()].reset_index(drop=True)
 
 
@@ -314,18 +317,25 @@ def facades_for(parcel, st: pd.DataFrame) -> dict:
     return res
 
 
-def main_facade(parcel, row: dict) -> str:
-    """The façade on the widest street (then the longest edge); with no street, the longest edge."""
+def main_facade(parcel, row: dict, streets=None) -> tuple[str, bool]:
+    """The façade on the widest street (then the longest edge). With no street along the plot, as the dataset
+    (nearest_front_street): the side with the nearest street in front of it within 50 m; else the longest edge.
+    Returns (direction, estimated): estimated = no street runs along the plot (the same as the website)."""
     on_street = [d for d in DIRS if row[f"facade_{d}"] == 1]
     if on_street:
         def key(d):
             w = row[f"street_width_{d}"]
             return (w if pd.notna(w) else -1, row["_edge_len"][d])
-        return max(on_street, key=key)
+        return max(on_street, key=key), False
+    if streets is not None:
+        _, sides = parcel_sides(parcel, streets)
+        if any(s["street"] is not None for s in sides) or nearest_front_street(sides, streets):
+            front = max((s for s in sides if s["street"] is not None), key=lambda s: (s["width"], s["length"]))
+            return DIRS[_sec(float(front["nz"]))], True
     ring = np.asarray(orient(parcel, 1.0).exterior.coords)
     best = max(zip(ring[:-1], ring[1:]), key=lambda e: np.hypot(*(e[1] - e[0])))
     (x1, y1), (x2, y2) = best
-    return DIRS[_sec(float(np.degrees(np.arctan2(y2 - y1, -(x2 - x1))) % 360))]
+    return DIRS[_sec(float(np.degrees(np.arctan2(y2 - y1, -(x2 - x1))) % 360))], True
 
 
 
@@ -462,7 +472,7 @@ def wall_dir(nz, axis: float) -> list[str]:
 
 def street_arrays(features: list[dict]):
     """The streets around the plot as the notebook uses them: every class, the width = STREETWIDTH (> 0),
-    else the median of its class, else the median of all (the notebook takes the medians over the city)."""
+    else the fixed width of its type (defaults.py), else the width of any street."""
     g, w, c = [], [], []
     for f in features:
         a = f.get("attributes") or {}
@@ -470,12 +480,11 @@ def street_arrays(features: list[dict]):
         if not paths:
             continue
         g.append(LineString(paths[0]) if len(paths) == 1 else shapely.MultiLineString(paths))
-        w.append(a.get("W", a.get("STREETWIDTH")))  # W: already filled with the city medians (local file)
+        w.append(a.get("STREETWIDTH"))
         c.append(str(a.get("SUBTYPECLASS")))
     st = pd.DataFrame({"W": pd.to_numeric(pd.Series(w, dtype=object), errors="coerce"), "C": c})
     st["W"] = st["W"].where(st["W"] > 0)
-    st["W"] = st["W"].fillna(st.groupby("C")["W"].transform("median"))
-    st["W"] = st["W"].fillna(st["W"].median()).fillna(0.0)
+    st["W"] = st["W"].fillna(st["C"].map(defaults.STREET_WIDTH)).fillna(defaults.STREET_WIDTH_ANY)
     geoms = np.array(g, dtype=object)
     return geoms, st["W"].to_numpy(float), st["C"].to_numpy(object), shapely.STRtree(geoms) if len(g) else None
 
@@ -1008,6 +1017,29 @@ def street_distance(parcel, d: str, streets, reach: float = NEIGHBOUR_RADIUS) ->
     return best
 
 
+def front_building(parcel, d: str, buildings, reach: float = NEIGHBOUR_RADIUS) -> tuple[float, float]:
+    """The nearest building straight in front of the sides of the plot facing d: (m from the side, height),
+    (NaN, NaN) when there is none within `reach` m. Any part of a GBA shape inside the plot is cut off first:
+    GBA often draws attached houses as one block that covers our plot too, and the part outside it is the
+    neighbour (0 m for a shared wall). The dataset's compute_fixed drops such a block as our own house."""
+    g_all, h_all, _, tree = buildings
+    best_d, best_h = np.nan, np.nan
+    for a, b, nx, ny in _sides(parcel, d):
+        seg = LineString([a, b])
+        corridor = _corridor(a, b, nx, ny, reach)
+        idx = tree.query(corridor, predicate="intersects")
+        if not len(idx):
+            continue
+        part = shapely.intersection(shapely.difference(g_all[idx], parcel), corridor)
+        ok = (shapely.area(part) >= 1.0) & (h_all[idx] > 0)  # under 1 m2 = drawing leftovers, not a building
+        if ok.any():
+            dist = shapely.distance(part[ok], seg)
+            k = int(np.argmin(dist))
+            if np.isnan(best_d) or dist[k] < best_d:
+                best_d, best_h = round(float(dist[k]), 2), round(float(h_all[idx][ok][k]), 1)
+    return best_d, best_h
+
+
 def street_index(st: pd.DataFrame):
     """The streets (centre lines and widths) with a spatial index, for street_distance."""
     if not len(st):
@@ -1042,20 +1074,24 @@ def facade_indicators(lat: float, lon: float, height: float | None = None, area:
     features = fetch_streets(parcel, NEIGHBOUR_RADIUS + 20)  # 300 m: also the neighbours card's street distance
     st = street_table(features)
     row = facades_for(parcel, st)
-    ind = indicators_for(parcel, street_arrays(features), height=height, land_area=area)
+    arrays = street_arrays(features)
+    ind = indicators_for(parcel, arrays, height=height, land_area=area)
     days = ind["days"]
     # the neighbours card: from each side of the plot, straight in front of it (unchanged)
     buildings = gba_buildings()
     streets = street_index(st)
     street_d = {d: street_distance(parcel, d, streets) for d in DIRS}
-    # the nearest building per direction, as the dataset (compute_fixed: from the plot boundary, 300 m;
-    # dist = 300 and height = 0 when there is none)
-    near = nearest_buildings(parcel, buildings)
-    adjoining = [near[f"height_{d}"] for d in DIRS if near[f"height_{d}"] > 0]
+    # the nearest building straight in front of each side (a shared wall = 0 m)
+    front = {d: front_building(parcel, d, buildings) for d in DIRS}
+    adjoining = [h for _, h in front.values() if not np.isnan(h)]
     try:
         uses = land_use_level1(parcel, *fetch_parcels_around(parcel))
-    except (OSError, RuntimeError):  # the land use is optional: without it the rest still loads
-        uses = {f"{k}_{d}": None for d in DIRS for k in ("neighbor_use", "across_use")}
+    except SOURCE_ERRORS:  # neither ArcGIS nor the parcels file answered: the use is not known
+        uses = {}
+        for d in DIRS:
+            has_side = bool(_sides(parcel, d))
+            uses[f"neighbor_use_{d}"] = "غير محدد" if has_side else "لا يوجد"
+            uses[f"across_use_{d}"] = "لا يوجد"
 
     facades = {}
     for d in DIRS:
@@ -1082,19 +1118,27 @@ def facade_indicators(lat: float, lon: float, height: float | None = None, area:
             "neighbours": {
                 "use": uses[f"neighbor_use_{d}"],  # adjoining parcel use, "شارع", or "لا يوجد" (no edge this way)
                 "across": uses[f"across_use_{d}"],  # use across the street, or "لا يوجد"
+                # the page shows an unknown use ("غير محدد") as "unknown, estimated data"; the model takes
+                # residential instead (by far the most common use in Riyadh)
+                "useEstimated": uses[f"neighbor_use_{d}"] == "غير محدد" or uses[f"across_use_{d}"] == "غير محدد",
+                "modelUse": defaults.LAND_USE if uses[f"neighbor_use_{d}"] == "غير محدد" else uses[f"neighbor_use_{d}"],
+                "modelAcross": defaults.LAND_USE if uses[f"across_use_{d}"] == "غير محدد" else uses[f"across_use_{d}"],
                 "streetWidth": _num(row[f"street_width_{d}"], 2) if row[f"facade_{d}"] else None,
+                # the street has no width in the layer: the calculations take the width of its type (defaults.py)
+                "streetWidthEstimated": bool(row[f"facade_{d}"]) and not (row[f"street_width_{d}"] > 0),
                 "streetClass": row[f"street_class_{d}"] if row[f"facade_{d}"] else None,
                 "streetName": row[f"street_name_{d}"] if row[f"facade_{d}"] else None,
                 # m from this side of the plot to the edge of the street in front of it (None = no street)
                 "streetDistance": _num(street_d[d], 2),
-                # the nearest building this way (dataset dist_<d>, height_<d>): m from the plot boundary
-                # (300 = none within 300 m) and its height (0 = none)
-                "nearestDistance": near[f"dist_{d}"],
-                "nearestHeight": near[f"height_{d}"],
+                # the nearest building straight in front of this side: m from the side (300 = none), height (0 = none)
+                "nearestDistance": NEIGHBOUR_RADIUS if np.isnan(front[d][0]) else front[d][0],
+                "nearestHeight": 0.0 if np.isnan(front[d][1]) else front[d][1],
             },
         }
+    main_dir, main_est = main_facade(parcel, row, arrays)
     return {
-        "mainFacade": main_facade(parcel, row),
+        "mainFacade": main_dir,
+        "mainFacadeEstimated": main_est,
         "buildingSource": ind["building_source"],
         "buildingHeight": round(ind["building_height"], 2),
         "site": {

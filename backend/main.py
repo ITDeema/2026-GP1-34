@@ -11,6 +11,7 @@ from facade_indicators_api import router as facade_router
 from density_api import router as density_router
 from noise_api import router as noise_router
 from surroundings_api import router as surroundings_router
+from plot_api import router as plot_router
 import local_data
 
 app = FastAPI(title="Maamar API")
@@ -26,6 +27,7 @@ app.include_router(facade_router)
 app.include_router(density_router)
 app.include_router(noise_router)
 app.include_router(surroundings_router)
+app.include_router(plot_router)
 
 # read the local parcels and streets in the background, so the first analysis does not wait for them
 local_data.warm_up()

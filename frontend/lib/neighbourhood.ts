@@ -51,7 +51,8 @@ export type NeighbourKind =
   | "unplanned"
   | "historic"
   | "unknown";
-export type Neighbour = { kind: NeighbourKind; height: number | null; distance: number | null }; // m
+// estimated: the use is not known, so it is taken as residential (as the model does) and marked as estimated
+export type Neighbour = { kind: NeighbourKind; height: number | null; distance: number | null; estimated?: boolean }; // m
 
 const KIND_ORDER: NeighbourKind[] = ["street", "villa", "building", "land"];
 
@@ -106,7 +107,12 @@ const LAND_USE: Record<string, NeighbourKind> = {
   "معالم تاريخية": "historic",
   "أرض فضاء": "land",
 };
-const kindOf = (use: string): NeighbourKind => LAND_USE[use.trim()] ?? "unknown";
+// A use that is not known ("غير محدد", or no data) is residential, as the model takes it (backend/defaults.py
+// LAND_USE), and marked as estimated.
+const kindOf = (use: string): { kind: NeighbourKind; estimated?: boolean } => {
+  const kind = LAND_USE[use.trim()];
+  return kind ? { kind } : { kind: "residential", estimated: true };
+};
 
 // The real neighbours of one façade, from the dataset columns of its direction:
 // the street (and what is across it) or the adjoining parcel, with the nearest building's height and distance.
@@ -120,11 +126,14 @@ export function neighboursFrom(data: FacadeNeighbours): Neighbour[] | "noWall" {
   };
   if (data.use === "شارع") {
     // the street's distance: from this side of the plot to the edge of the street in front of it
-    const rows: Neighbour[] = [{ kind: "street", height: null, distance: data.streetDistance ?? null }];
-    if (data.across && data.across !== "لا يوجد") rows.push({ kind: kindOf(data.across), ...building });
+    // estimated: the street has no width in the layer, so the width of its type is used (and its distance with it)
+    const rows: Neighbour[] = [
+      { kind: "street", height: null, distance: data.streetDistance ?? null, estimated: data.streetWidthEstimated },
+    ];
+    if (data.across && data.across !== "لا يوجد") rows.push({ ...kindOf(data.across), ...building });
     return rows;
   }
-  return [{ kind: kindOf(data.use), ...building }];
+  return [{ ...kindOf(data.use), ...building }];
 }
 
 export function neighboursFor(facade: Facade): Neighbour[] {

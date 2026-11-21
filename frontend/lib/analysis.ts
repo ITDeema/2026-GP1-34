@@ -3,6 +3,7 @@ import type { Lang } from "@/lib/i18n";
 import { fetchStreetsAround, findFacades, streetsForPlot } from "@/lib/plot-facade";
 import type { Facade } from "@/lib/plot-facade";
 import { pointKey, shared } from "@/lib/shared-request";
+import { API_URL } from "@/lib/site-api";
 
 /*
  * TEMPORARY MOCK DATA LAYER.
@@ -93,8 +94,10 @@ export type PlotInfo = {
   width: number; // meters
   depth: number; // meters
   area: number; // square meters
+  areaEstimated: boolean; // true = the plot's area is not known: the fixed area of backend/defaults.py (estimated)
   outline: LatLng[] | null; // the real plot boundary, when the parcel was found
   orientation: Direction8 | null; // the main facade; null when the plot was not found
+  orientationEstimated: boolean; // true = no street runs along the plot (nearest street in front, or longest edge)
   landUse: string | null; // the plot's use in the Riyadh parcels layer (ParcelSub), e.g. "سكني"; null when unknown
 };
 
@@ -106,13 +109,6 @@ export const MAX_BUILDING_HEIGHT = 14;
 // (e.g. "سكني تجاري"), and so is a plot with no use recorded; "متعددة الاستخدام", commercial and the other uses are not.
 export function isResidential(landUse: string | null): boolean {
   return landUse === null || landUse.includes("سكني");
-}
-
-function hashPoint(point: LatLng): number {
-  const text = `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`;
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  return hash;
 }
 
 // The real plot under the point, from the Riyadh parcels layer (ArcGIS):
@@ -162,16 +158,21 @@ function insideRing(point: LatLng, ring: number[][]): boolean {
 
 export function pickParcel(point: LatLng, features: ParcelFeature[]): Parcel | null {
   let best: Parcel | null = null;
+  let bestKey = Infinity;
   for (const feature of features) {
-    const area = Number(feature.attributes?.Area);
+    const raw = Number(feature.attributes?.Area);
+    const known = Number.isFinite(raw) && raw > 0;
     // the first ring is the outer boundary; ArcGIS gives [longitude, latitude] pairs
     const ring = feature.geometry?.rings?.[0];
-    if (!Number.isFinite(area) || area <= 0 || !ring || ring.length < 4) continue;
+    if (!ring || ring.length < 4) continue;
     if (!insideRing(point, ring)) continue;
-    if (!best || area < best.area) {
+    // the smallest parcel; one without an area is kept only when no other is found (area 0 = not known)
+    const key = known ? raw : Number.MAX_VALUE;
+    if (!best || key < bestKey) {
+      bestKey = key;
       const use = feature.attributes?.ParcelSub;
       best = {
-        area: Math.round(area),
+        area: known ? Math.round(raw) : 0,
         outline: ring.map(([lng, lat]) => ({ lat, lng })),
         landUse: typeof use === "string" && use.trim() !== "" ? use.trim() : null,
       };
@@ -191,9 +192,41 @@ const FACADE_DIRECTION: Record<Facade, Direction8> = {
   NW: "northWest",
 };
 
+// When neither ArcGIS nor the parcels file finds the plot, the backend answers the fixed land area of
+// backend/defaults.py (LAND_AREA, the dataset median), shown as estimated data. Only when the backend cannot be
+// reached at all is this copy of the same number used.
+const DEFAULT_LAND_AREA = 499; // m², the same as LAND_AREA in backend/defaults.py
+
+type LocalPlot = { parcel: Parcel | null; area: number | null };
+
+// The plot from the backend's parcels file, when ArcGIS does not answer; else the backend's fixed area.
+async function fetchParcelLocal(point: LatLng): Promise<LocalPlot> {
+  try {
+    const res = await fetch(`${API_URL}/plot?latitude=${point.lat}&longitude=${point.lng}`);
+    if (!res.ok) return { parcel: null, area: null };
+    const data = (await res.json()) as {
+      area?: number; outline?: [number, number][] | null; landUse?: string | null; estimated?: boolean;
+    };
+    if (data.estimated || !data.outline || data.outline.length < 4) {
+      return { parcel: null, area: data.area ? Math.round(data.area) : null };
+    }
+    return {
+      parcel: {
+        area: Math.round(data.area ?? 0),
+        outline: data.outline.map(([lat, lng]) => ({ lat, lng })),
+        landUse: data.landUse ?? null,
+      },
+      area: null,
+    };
+  } catch {
+    return { parcel: null, area: null };
+  }
+}
+
 // Looks up the plot under a point: its real land area, boundary and main facade
 // (the facade on the widest street, found the same way as the dataset notebook).
-// The area falls back to a sample value when no parcel is found at the point.
+// ArcGIS first; when it does not answer, the backend's parcels file; when neither finds a parcel, the
+// fixed land area of backend/defaults.py (estimated).
 // The neighborhood is loaded separately (fetchNeighborhood) so a slow answer there
 // never delays drawing the plot.
 // Shared: the plot page looks it up once, and the results page reuses it.
@@ -203,24 +236,28 @@ export function lookupPlot(point: LatLng): Promise<PlotInfo> {
 
 async function loadPlot(point: LatLng): Promise<PlotInfo> {
   // the streets around the point load at the same time as the plot
-  const [parcel, nearbyStreets] = await Promise.all([fetchParcel(point), fetchStreetsAround(point)]);
-  const parcelArea = parcel?.area ?? null;
-  const hash = hashPoint(point);
-  const sampleWidth = 16 + (hash % 13);
-  const sampleDepth = 20 + ((hash >>> 4) % 12);
-  const area = parcelArea ?? Math.round(sampleWidth * sampleDepth);
+  const [online, nearbyStreets] = await Promise.all([fetchParcel(point), fetchStreetsAround(point)]);
+  const local = online ? null : await fetchParcelLocal(point);
+  const parcel = online ?? local?.parcel ?? null;
+  const areaEstimated = !parcel?.area;
+  const area = parcel?.area || local?.area || DEFAULT_LAND_AREA;
   // the plot drawn on the map keeps the same proportions as the results page (depth = 1.15 × width)
-  const width = parcelArea ? Math.round(Math.sqrt(parcelArea / 1.15) * 10) / 10 : sampleWidth;
-  const depth = parcelArea ? Math.round(width * 1.15 * 10) / 10 : sampleDepth;
+  const width = Math.round(Math.sqrt(area / 1.15) * 10) / 10;
+  const depth = Math.round(width * 1.15 * 10) / 10;
 
   let orientation: Direction8 | null = null;
+  let orientationEstimated = false;
   if (parcel?.outline) {
     const streets = await streetsForPlot(point, parcel.outline, nearbyStreets);
-    const { main } = findFacades(parcel.outline, streets ?? []);
+    const { main, estimated } = findFacades(parcel.outline, streets ?? []);
     orientation = main ? FACADE_DIRECTION[main] : null;
+    orientationEstimated = estimated;
   }
 
-  return { width, depth, area, outline: parcel?.outline ?? null, orientation, landUse: parcel?.landUse ?? null };
+  return {
+    width, depth, area, areaEstimated, outline: parcel?.outline ?? null,
+    orientation, orientationEstimated, landUse: parcel?.landUse ?? null,
+  };
 }
 
 /* ---------- running an analysis ---------- */

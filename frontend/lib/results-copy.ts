@@ -174,6 +174,7 @@ const ar = {
     title: "المجاورون",
     hint: "المجاورون على الواجهة {facade}. يظهر فقط ما هو موجود.",
     empty: "لا توجد مبانٍ أو شوارع مجاورة على هذه الواجهة.",
+    estimated: "بيانات تقديرية",
     cols: { kind: "المجاور", height: "الارتفاع", distance: "المسافة" },
     kinds: {
       street: "شارع",
@@ -451,6 +452,7 @@ const en: ResultsCopy = {
     title: "Neighbors",
     hint: "Neighbors on the {facade} façade. Only what exists is shown.",
     empty: "No neighboring buildings or streets on this façade.",
+    estimated: "Estimated data",
     cols: { kind: "Neighbor", height: "Height", distance: "Distance" },
     kinds: {
       street: "Street",

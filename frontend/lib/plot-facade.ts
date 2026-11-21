@@ -11,8 +11,9 @@ import type { LatLng } from "@/lib/geo";
  *   * each edge's outward direction is one of 8 directions; per direction we keep
  *     the widest street (then the longest edge).
  * When the plot has more than one facade, the main facade is the one on the widest street
- * (then the longest edge). When no street is found, we fall back to the plot's longest edge,
- * like the notebook's orientation_deg.
+ * (then the longest edge). When no street runs along the plot, as the dataset (nearest_front_street): the edge
+ * with the nearest street in front of it within 50 m; when there is none, the plot's longest edge
+ * (the notebook's orientation_deg). Both are marked as estimated.
  */
 
 export type Facade = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW";
@@ -25,6 +26,7 @@ const STREETS_URL =
 const TOL = 3; // m
 const MAX_ANGLE = 30; // degrees
 const CAND_RADIUS = 80; // m
+const FALLBACK_R = 50; // m, the farthest street in front of an edge (dataset nearest_front_street)
 const EXCLUDE_CLASS = new Set(["سكة حديد", "طريق مقترح", "نفق", "كوبري"]);
 
 // the streets are loaded around the clicked point, at the same time as the plot
@@ -200,8 +202,38 @@ function toStreets(features: StreetFeature[], project: (p: LatLng) => XY): Stree
 
 export type FacadeResult = {
   facades: Facade[]; // every direction with a street, in N → NW order
-  main: Facade | null; // the facade on the widest street; the longest edge when no street was found
+  main: Facade | null; // the facade on the widest street; else the nearest street in front; else the longest edge
+  estimated: boolean; // true = no street runs along the plot (the nearest street in front, or the longest edge)
 };
+
+// A point on the polyline nearest to p.
+function nearestPoint(line: XY[], p: XY): XY {
+  return pointAlong(line, nearestOnLine(line, p).along);
+}
+
+// The dataset's nearest_front_street: from the middle of each edge, the nearest point of each street; a street
+// counts when it is in front of the edge (within 60° of its outward direction) and its edge (distance − width / 2)
+// is within 50 m. Returns the outward direction of the edge with the nearest such street, or null.
+function nearestFrontStreet(edges: { mid: XY; normal: number }[], streets: Street[]): number | null {
+  let best: { edge: number; normal: number } | null = null;
+  for (const e of edges) {
+    const nx = Math.sin((e.normal * Math.PI) / 180);
+    const ny = Math.cos((e.normal * Math.PI) / 180);
+    for (const s of streets) {
+      for (const line of s.lines) {
+        const q = nearestPoint(line, e.mid);
+        const vx = q[0] - e.mid[0];
+        const vy = q[1] - e.mid[1];
+        const dist = Math.hypot(vx, vy);
+        if (dist > FALLBACK_R + s.detectWidth / 2) continue;
+        if (dist > 0 && (vx * nx + vy * ny) / dist < Math.cos(Math.PI / 3)) continue; // not in front of the edge
+        const edge = Math.max(dist - s.detectWidth / 2, 0);
+        if (edge <= FALLBACK_R && (!best || edge < best.edge)) best = { edge, normal: e.normal };
+      }
+    }
+  }
+  return best ? best.normal : null;
+}
 
 export function findFacades(outline: LatLng[], features: StreetFeature[]): FacadeResult {
   const project = projector(outline[0]);
@@ -220,7 +252,7 @@ export function findFacades(outline: LatLng[], features: StreetFeature[]): Facad
 
   const streets = toStreets(features, project);
 
-  type Edge = { len: number; normal: number; street: Street | null; chamfer?: boolean };
+  type Edge = { len: number; normal: number; mid: XY; street: Street | null; chamfer?: boolean };
   const edges: Edge[] = [];
   for (let i = 0; i < ring.length; i++) {
     const [x1, y1] = ring[i];
@@ -246,7 +278,7 @@ export function findFacades(outline: LatLng[], features: StreetFeature[]): Facad
         break;
       }
     }
-    edges.push({ len, normal, street });
+    edges.push({ len, normal, mid, street });
   }
 
   // corner cut-off: a street edge between two street edges, turned 30–60° from both
@@ -278,11 +310,13 @@ export function findFacades(outline: LatLng[], features: StreetFeature[]): Facad
     const top = main ? best.get(main)! : null;
     if (!top || cur.width > top.width || (cur.width === top.width && cur.len > top.len)) main = d;
   }
+  const estimated = !main && edges.length > 0;
   if (!main && edges.length) {
+    const front = nearestFrontStreet(edges, streets);
     const longest = edges.reduce((a, b) => (b.len > a.len ? b : a));
-    main = DIRS8[sector(longest.normal)];
+    main = DIRS8[sector(front ?? longest.normal)];
   }
-  return { facades, main };
+  return { facades, main, estimated };
 }
 
 /* ---------- edges for drawing ---------- */

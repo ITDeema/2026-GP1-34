@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
+import { EstimatedMark, EstimatedNote } from "@/components/Estimated";
 import Input from "@/components/Input";
 import SegmentedControl from "@/components/SegmentedControl";
 import StatusMessage from "@/components/analysis/StatusMessage";
@@ -35,6 +36,19 @@ const PlotPickerMap = dynamic(() => import("@/components/map/PlotPickerMap"), {
 type Mode = "map" | "coords";
 type VillaType = "attachedBoth" | "attachedOne" | "detached";
 type Message = { tone: "error" | "success"; text: string } | null;
+
+// The land area, with the estimated star when the plot's area is not known (the fixed area of backend/defaults.py).
+function AreaValue({ plot }: { plot: PlotInfo }) {
+  const c = usePlotCopy().select;
+  return (
+    <span>
+      <bdi>
+        {plot.area} {c.areaUnit}
+      </bdi>
+      {plot.areaEstimated && <EstimatedMark />}
+    </span>
+  );
+}
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -169,12 +183,13 @@ function SelectPlotContent() {
   }
 
   
-  // Only a residential plot from the Riyadh parcels layer can be analyzed (a street or another use is refused).
-  const plotProblem = plot && (!plot.outline || !isResidential(plot.landUse)) ? c.errNotResidential : null;
+  // Only a residential plot from the Riyadh parcels layer can be analyzed: no plot found (neither ArcGIS nor the
+  // parcels file) or another use (a street, commercial, ...) is refused.
+  const plotProblem = !plot ? null : !plot.outline ? c.errNoPlot : !isResidential(plot.landUse) ? c.errNotResidential : null;
 
   // The municipality's limits, checked as the user types: the height cannot pass the allowed maximum,
   // and the area cannot be larger than the plot itself (its area from the parcels layer).
-  const plotArea = plot?.outline ? plot.area : null;
+  const plotArea = plot?.outline && !plot.areaEstimated ? plot.area : null;
   const heightError =
     expectedHeight !== "" && Number(expectedHeight) > MAX_BUILDING_HEIGHT
       ? c.errHeightMax.replace("{max}", String(MAX_BUILDING_HEIGHT))
@@ -306,25 +321,33 @@ function SelectPlotContent() {
                   value={<bdi dir="ltr">{formatCoordinates(point)}</bdi>}
                 />
                 {plot && plotProblem ? (
-                  // a refused plot (a street or another use): only the reason, no sample area or details
+                  // no plot found, or another use (a street, commercial, ...): only the reason, no details
                   <StatusMessage tone="error">{plotProblem}</StatusMessage>
                 ) : plot ? (
                   <>
+                    <Row label={c.area} value={<AreaValue plot={plot} />} />
+                    <Row label={c.neighborhood} value={neighborhood === undefined ? "…" : (neighborhood ?? c.unknown)} />
                     <Row
-                      label={c.area}
+                      label={c.orientation}
                       value={
-                        <bdi>
-                          {plot.area} {c.areaUnit}
-                        </bdi>
+                        plot.orientation ? (
+                          <span>
+                            {c.directions[plot.orientation]}
+                            {plot.orientationEstimated && <EstimatedMark />}
+                          </span>
+                        ) : (
+                          c.unknown
+                        )
                       }
                     />
-                    <Row label={c.neighborhood} value={neighborhood === undefined ? "…" : (neighborhood ?? c.unknown)} />
-                    <Row label={c.orientation} value={plot.orientation ? c.directions[plot.orientation] : c.unknown} />
                   </>
                 ) : (
                   <p className="text-navy-900/70">{c.plotLoading}</p>
                 )}
               </dl>
+            )}
+            {point && plot && !plotProblem && (plot.areaEstimated || plot.orientationEstimated) && (
+              <EstimatedNote label={c.estimated} />
             )}
           </Card>
           

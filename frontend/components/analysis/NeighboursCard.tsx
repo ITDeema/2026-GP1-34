@@ -1,6 +1,7 @@
 "use client";
 
 import Card from "@/components/Card";
+import { EstimatedMark, EstimatedNote } from "@/components/Estimated";
 import type { Facade } from "@/lib/analysis-detail";
 import { neighboursFor, neighboursFrom } from "@/lib/neighbourhood";
 import type { FacadeNeighbours } from "@/lib/site-api";
@@ -38,7 +39,11 @@ export default function NeighboursCard({ facade, data }: { facade: Facade; data:
             <tbody>
               {rows.map((row, index) => (
                 <tr key={`${row.kind}-${index}`} className="border-t border-navy-900/10">
-                  <th scope="row" className="py-2 text-start font-semibold">{c.neighbours.kinds[row.kind]}</th>
+                  <th scope="row" className="py-2 text-start font-semibold">
+                    {c.neighbours.kinds[row.kind]}
+                    {/* the use is not known (no data, or "غير محدد" in the parcels layer): residential, estimated */}
+                    {row.estimated && <EstimatedMark />}
+                  </th>
                   <td className="py-2 text-start">
                     <bdi>{row.height == null ? "—" : `${row.height} m`}</bdi>
                   </td>
@@ -49,6 +54,7 @@ export default function NeighboursCard({ facade, data }: { facade: Facade; data:
               ))}
             </tbody>
           </table>
+          {rows.some((row) => row.estimated) && <EstimatedNote label={c.neighbours.estimated} />}
         </div>
       )}
     </Card>
