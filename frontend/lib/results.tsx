@@ -138,6 +138,9 @@ type ResultsContextValue = {
   setRole: (id: string, role: Role) => Promise<boolean>;
   // The analysis was calculated again (and saved), so it is no longer more than 6 months old.
   markRenewed: (id: string) => void;
+  // Deletes the project from the history (and favorites). Only the Project row: the analysis stays,
+  // other projects may share it. Resolves to false when Supabase refused it (the project comes back).
+  remove: (id: string) => Promise<boolean>;
   // Saves a finished analysis in the history (it is not a favorite yet).
   // Returns the new result's id. Throws when it could not be saved.
   addResult: (input: NewResult) => Promise<string>;
@@ -243,6 +246,21 @@ export function ResultsProvider({ children }: { children: ReactNode }) {
 
   const markRenewed = useCallback((id: string) => patch(id, { stale: false }), [patch]);
 
+  const remove = useCallback(
+    async (id: string) => {
+      const before = latest.current;
+      if (!before.some((r) => r.id === id)) return false;
+      commit(before.filter((r) => r.id !== id));
+      // .select() returns the deleted rows, so a policy that blocks the delete (0 rows) is noticed
+      const { data, error } = await supabase.from("Project").delete().eq("projectID", id).select("projectID");
+      if (!error && data && data.length > 0) return true;
+      console.error("Delete project error:", error?.message ?? "no row deleted (run supabase/project-delete.sql)");
+      commit(before);
+      return false;
+    },
+    [supabase, commit],
+  );
+
   const addResult = useCallback(
     async (input: NewResult) => {
       const name = uniqueName(input.namePrefix, latest.current.length + 1, latest.current.map((r) => r.name));
@@ -279,8 +297,8 @@ export function ResultsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ results, loaded, loadError, rename, setSaved, addResult, markOpened, setRole, markRenewed }),
-    [results, loaded, loadError, rename, setSaved, addResult, markOpened, setRole, markRenewed],
+    () => ({ results, loaded, loadError, rename, setSaved, addResult, markOpened, setRole, markRenewed, remove }),
+    [results, loaded, loadError, rename, setSaved, addResult, markOpened, setRole, markRenewed, remove],
   );
 
   return <ResultsContext.Provider value={value}>{children}</ResultsContext.Provider>;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import EmptyState from "@/components/EmptyState";
+import IconButton, { HeartIcon, PencilIcon } from "@/components/IconButton";
 import Modal from "@/components/Modal";
 import RenameResultModal from "@/components/RenameResultModal";
 import SearchInput from "@/components/SearchInput";
@@ -89,20 +90,12 @@ export default function SavedPage() {
                         </svg>
                       </Link>
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setRenaming(r)}
-                        >
-                          {t("common.rename")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setRemoving(r)}
-                        >
-                          {t("saved.remove")}
-                        </Button>
+                        <IconButton label={t("common.rename")} onClick={() => setRenaming(r)}>
+                          <PencilIcon />
+                        </IconButton>
+                        <IconButton label={t("saved.remove")} onClick={() => setRemoving(r)}>
+                          <HeartIcon />
+                        </IconButton>
                       </div>
                     </div>
                   </Card>

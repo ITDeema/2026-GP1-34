@@ -142,6 +142,11 @@ const ar = {
   "history.colNotes": "ملاحظات",
   "history.colActions": "إجراءات",
   "history.noteSetback": "القطعة قريبة من الحد الأدنى للارتدادات",
+  "history.delete": "حذف",
+  "history.deleteTitle": "حذف المشروع",
+  "history.deleteBody": "سيُحذف «{name}» من السجل والمفضلات، ولا يمكن التراجع عن ذلك.",
+  "history.deleteConfirm": "حذف",
+  "history.deleteFailed": "تعذر حذف المشروع. حاول مرة أخرى.",
 };
 
 export type TranslationKey = keyof typeof ar;
@@ -267,6 +272,11 @@ const en: Record<TranslationKey, string> = {
   "history.colNotes": "Notes",
   "history.colActions": "Actions",
   "history.noteSetback": "Plot is close to the minimum setback limit",
+  "history.delete": "Delete",
+  "history.deleteTitle": "Delete project",
+  "history.deleteBody": "“{name}” will be deleted from your history and favorites. This cannot be undone.",
+  "history.deleteConfirm": "Delete",
+  "history.deleteFailed": "The project could not be deleted. Please try again.",
 };
 
 const dictionaries: Record<Lang, Record<TranslationKey, string>> = { ar, en };

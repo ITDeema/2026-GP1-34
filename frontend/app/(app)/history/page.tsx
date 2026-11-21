@@ -5,6 +5,8 @@ import Link from "next/link";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import EmptyState from "@/components/EmptyState";
+import IconButton, { PencilIcon, TrashIcon } from "@/components/IconButton";
+import Modal from "@/components/Modal";
 import RenameResultModal from "@/components/RenameResultModal";
 import SearchInput from "@/components/SearchInput";
 import StatusMessage from "@/components/analysis/StatusMessage";
@@ -15,9 +17,18 @@ import type { AnalysisResult } from "@/lib/results";
 
 export default function HistoryPage() {
   const { t, lang } = useT();
-  const { results, loaded, loadError } = useResults();
+  const { results, loaded, loadError, remove } = useResults();
   const [query, setQuery] = useState("");
   const [renaming, setRenaming] = useState<AnalysisResult | null>(null);
+  const [deleting, setDeleting] = useState<AnalysisResult | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const id = deleting.id;
+    setDeleting(null);
+    setDeleteFailed(!(await remove(id)));
+  }
 
   const visible = results.filter((r) =>
     r.name.toLowerCase().includes(query.trim().toLowerCase()),
@@ -29,6 +40,8 @@ export default function HistoryPage() {
         <h1 className="font-heading text-2xl font-bold">{t("history.title")}</h1>
         <p className="mt-1 text-sm text-navy-900/70">{t("history.subtitle")}</p>
       </div>
+
+      {deleteFailed && <StatusMessage tone="error">{t("history.deleteFailed")}</StatusMessage>}
 
       {loadError ? (
         <StatusMessage tone="error">{t("common.loadError")}</StatusMessage>
@@ -85,13 +98,12 @@ export default function HistoryPage() {
                           >
                             {t("common.viewResults")}
                           </Link>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setRenaming(r)}
-                          >
-                            {t("common.rename")}
-                          </Button>
+                          <IconButton label={t("common.rename")} onClick={() => setRenaming(r)}>
+                            <PencilIcon />
+                          </IconButton>
+                          <IconButton label={t("history.delete")} tone="danger" onClick={() => setDeleting(r)}>
+                            <TrashIcon />
+                          </IconButton>
                         </div>
                       </td>
                     </tr>
@@ -104,6 +116,24 @@ export default function HistoryPage() {
       )}
 
       <RenameResultModal result={renaming} onClose={() => setRenaming(null)} />
+
+      <Modal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={t("history.deleteTitle")}
+      >
+        <p className="text-sm text-navy-900/70">
+          {t("history.deleteBody", { name: deleting?.name ?? "" })}
+        </p>
+        <div className="mt-6 flex gap-3">
+          <Button variant="danger" onClick={confirmDelete}>
+            {t("history.deleteConfirm")}
+          </Button>
+          <Button variant="secondary" onClick={() => setDeleting(null)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </Modal>
     </main>
   );
 }
