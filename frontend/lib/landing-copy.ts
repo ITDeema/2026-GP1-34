@@ -37,7 +37,6 @@ const ar = {
     items: [
       "OpenStreetMap",
       "EPW",
-      "ERA5-Land",
       "ArcGIS",
       "GlobalBuildingAtlas",
       "كود البناء السعودي",
@@ -240,7 +239,6 @@ const en: LandingCopy = {
     items: [
       "OpenStreetMap",
       "EPW",
-      "ERA5-Land",
       "ArcGIS",
       "GlobalBuildingAtlas",
       "Saudi Building Code",

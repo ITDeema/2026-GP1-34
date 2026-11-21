@@ -40,23 +40,24 @@ const WIND_FACADE: Record<WindDirection, Facade> = {
 
 export type FacadeIndicators = {
   radiation: number | null; // kWh/m²/day in summer (June–August); null when no wall faces this way
-  shade: number | null; // 0..1 share of the façade shaded by neighbours, summer (21 June); null when no wall
-  wind: number | null; // degrees, wind shelter of the wall (0 = fully exposed to the wind that hits it); null when no wall
-  sky: number | null; // 0..1, sky view of the wall (SVF_wall, 1 = nothing blocks the sky); null when no wall
+  shade: number | null; // 0..1 (Shade_p / 100), share of the summer sun-facing hours the façade is shaded; null when no wall
+  wind: number | null; // degrees, Wind_block_good: shelter from the desirable wind (0 = fully exposed); null when no wall
+  sky: number | null; // 0..1, sky view of the wall (Steger 2022, 1 = nothing blocks the sky); null when no wall
 };
 export type MetricKey = keyof FacadeIndicators;
 export const METRICS: MetricKey[] = ["radiation", "shade", "wind", "sky"];
 
 export type SiteIndicators = {
-  windSpeed: number; // m/s
-  windFrom: Facade;
+  windSpeed: number; // m/s, mean in summer (June–August)
+  windFrom: Facade; // the side the summer wind comes from most often
+  windShare?: number | null; // % of the summer windy hours that come from windFrom
   temperature: number; // °C, mean daily maximum in summer (June–August)
   density: number | null; // Population density: people/km²
   densityLevel?: "L" | "M" | "H" | null;
   avgHeight: number | null; // m, mean of the neighbouring buildings within 300 m; null when none
   maxHeight: number | null; // m, tallest of the neighbours per direction; null when none
   noise: Level | null; // road noise level; null when it could not be loaded
-  noiseReason?: { roadClass: NoiseRoadClass; distance: number } | null; // the road that decided it (m)
+  noiseReason?: { roadClass: NoiseRoadClass; distance: number } | null; // the road or shop that decided it (m)
 };
 
 export type IndicatorsData = {
@@ -202,12 +203,15 @@ export async function fetchIndicators(
     let facadesOk = false;
     let noiseOk = false;
 
-  // The wind is real: it comes from our backend (ERA5-Land). If the backend is
-  // not running we keep the sample values, and the rest of the dashboard still works.
+  // The wind is real: the summer wind (June–August) of the EPW weather file (riyadh-climate.json), the wind
+  // that matters for design in Riyadh. Over the whole year the northerly wind is split between N, NW and NE,
+  // so the single top direction flips between N and SE; the summer one is clearly from the north.
   try {
     const wind = await windRequest;
-    data.site.windFrom = WIND_FACADE[wind.dominant];
-    data.site.windSpeed = wind.meanSpeed;
+    const summer = wind.seasons?.summer;
+    data.site.windFrom = WIND_FACADE[summer?.dominant ?? wind.dominant];
+    data.site.windSpeed = summer?.meanSpeed ?? wind.meanSpeed;
+    data.site.windShare = summer ? summer.frequencies[summer.dominant] : wind.frequencies[wind.dominant];
     windOk = true;
   } catch (error) {
     if (options.signal.aborted) throw error;
@@ -244,7 +248,7 @@ export async function fetchIndicators(
   }
 
   // Radiation, shade, wind shelter and sky view are real: they come from our backend, the same
-  // calculation as the dataset (radiation: summer per day; shade: 21 June; wind shelter and sky view: of each wall).
+  // calculation as the dataset (radiation: summer per day; shade: summer Shade_p; wind shelter: the desirable wind).
   // If the backend is not running we keep the sample values.
   if (facadeRequest) {
     try {
@@ -258,7 +262,7 @@ export async function fetchIndicators(
         const got = real.facades[d];
         facade.radiation = take(got.radiation?.summer?.perDay, facade.radiation);
         facade.shade = take(got.shade?.summer, facade.shade);
-        facade.wind = take(got.windBlock, facade.wind);
+        facade.wind = take(got.wind?.good, facade.wind);
         facade.sky = take(got.sky, facade.sky);
       });
       if (real.site) {

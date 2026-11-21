@@ -157,7 +157,13 @@ export function SiteIndicatorsCard({ site }: { site: SiteIndicators }) {
      : densityLevelOf(site.density, site.densityLevel);
   const rows: { label: string; value: string }[] = [
     { label: s.windSpeed, value: `${site.windSpeed} m/s` },
-    { label: s.windFrom, value: c.facade.names[site.windFrom] },
+    {
+      label: s.windFrom,
+      value:
+        site.windShare == null
+          ? c.facade.names[site.windFrom]
+          : fill(s.windShare, { facade: c.facade.names[site.windFrom], share: Math.round(site.windShare) }),
+    },
     { label: s.temperature, value: `${site.temperature} °C` },
    {
   label: s.density,

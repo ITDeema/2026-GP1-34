@@ -1,7 +1,8 @@
-// Requests for the analysis diagrams: our backend (sun path, places, buildings)
-// and OpenStreetMap (roads, land use). Set NEXT_PUBLIC_API_URL for a deployed backend.
+// Requests to our backend (and the sun path and wind from riyadh-climate.json).
+// The analytical diagrams come from the backend's saved OpenStreetMap file (no request to Overpass). Set NEXT_PUBLIC_API_URL for a deployed backend.
 
 import { pointKey, shared, waitFor } from "@/lib/shared-request";
+import riyadhClimate from "@/lib/riyadh-climate.json";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -41,6 +42,7 @@ export type ServicesResponse = {
   services: Record<string, { count: number; nearest: number | null }>;
 };
 
+
 export type Tags = Record<string, string | undefined>;
 export type OsmPoint = { lat: number; lon: number };
 export type OsmElement = {
@@ -73,44 +75,15 @@ function limited(parent: AbortSignal | undefined, ms: number) {
 
 /* ---------- our backend ---------- */
 
-// Throws when the sun path cannot be loaded: a sun diagram without the sun would mislead.
-// Shared: the analysis page starts it, the results page reuses it.
-export function fetchSunPath(lat: number, lng: number, signal?: AbortSignal): Promise<SunPath> {
-  return waitFor(shared(`sun:${pointKey(lat, lng)}`, () => loadSunPath(lat, lng)), signal);
+// The sun path and the wind are the same for every plot in Riyadh (one fixed point, like the dataset),
+// so they are read from riyadh-climate.json (made by backend/tools/export_riyadh_climate.py):
+// they show at once, with no request to the backend.
+export function fetchSunPath(_lat: number, _lng: number, signal?: AbortSignal): Promise<SunPath> {
+  return waitFor(Promise.resolve(riyadhClimate.sunPath as SunPath), signal);
 }
 
-async function loadSunPath(lat: number, lng: number): Promise<SunPath> {
-  const request = limited(undefined, 30_000);
-  try {
-    const res = await fetch(`${API_URL}/sunpath?latitude=${lat}&longitude=${lng}`, {
-      signal: request.signal,
-    });
-    if (!res.ok) throw new Error(`Sun path request failed (${res.status})`);
-    const data = (await res.json()) as SunPath;
-    if (!data.arcs) throw new Error("Sun path response has no arcs");
-    return data;
-  } finally {
-    request.done();
-  }
-}
-
-// The wind is the same for every plot (one ERA5-Land point for Riyadh), so no coordinates are sent.
-// Shared: the analysis page starts it, the results page reuses it.
 export function fetchWind(signal?: AbortSignal): Promise<Wind> {
-  return waitFor(shared("wind", loadWind), signal);
-}
-
-async function loadWind(): Promise<Wind> {
-  const request = limited(undefined, 30_000);
-  try {
-    const res = await fetch(`${API_URL}/wind`, { signal: request.signal });
-    if (!res.ok) throw new Error(`Wind request failed (${res.status})`);
-    const data = (await res.json()) as Wind;
-    if (!data.frequencies || !data.dominant) throw new Error("Wind response is incomplete");
-    return data;
-  } finally {
-    request.done();
-  }
+  return waitFor(Promise.resolve(riyadhClimate.wind as Wind), signal);
 }
 
 // Per-façade indicators of the plot from our backend, same calculation as the dataset
@@ -135,9 +108,8 @@ export type FacadeNeighbours = {
 
 export type FacadeIndicatorsResponse = {
   mainFacade: FacadeDirection;
-  buildingSource: "measured_footprint" | "envelope_measured_h" | "regulation_envelope";
+  buildingSource: "measured_footprint" | "regulation_envelope" | "user_design";
   buildingHeight: number; // m
-  skyView: number; // 0..1, dataset SVF: the plot's sky view at ground level (not shown yet)
   site: {
     summerMaxTemp: number; // °C, mean daily maximum in June–August (EPW temp_air)
     avgHeight: number | null; // m, all neighbouring buildings within 300 m
@@ -149,9 +121,10 @@ export type FacadeIndicatorsResponse = {
       onStreet: boolean;
       streetWidth: number | null; // m
       radiation: { summer: SeasonRadiation; winter: SeasonRadiation }; // null when no wall faces this way
-      shade: { summer: number | null; equinox: number | null; winter: number | null }; // 0..1, dataset Shaded_Pct
-      sky: number | null; // 0..1, sky view of the wall (website only, not a dataset column)
-      windBlock: number | null; // degrees, wind shelter of the wall (website only, not a dataset column)
+      shade: { summer: number | null }; // 0..1 = Shade_p / 100, summer (June–August): 0 never shaded, 1 always shaded
+      sky: number | null; // 0..1, sky view of the wall (Steger 2022, the dataset's wall_svf)
+      wind: { good: number | null; bad: number | null }; // degrees, dataset Wind_block_good / Wind_block_bad
+      facadeLength: number | null; // m, dataset facade_length (the house walls facing this way)
       neighbours: FacadeNeighbours; // dataset neighbor_use, across_use, street_*, dist, height
     }
   >;
@@ -256,103 +229,45 @@ async function loadDensity(neighborhood: string): Promise<DensityResponse> {
 }
 
 
-// The places and buildings are optional extras: when they fail we return nothing and draw without them.
-export async function fetchPois(
-  lat: number,
-  lng: number,
-  radius: number,
-  signal?: AbortSignal,
-): Promise<Poi[]> {
-  const request = limited(signal, 30_000);
-  try {
-    const res = await fetch(
-      `${API_URL}/pois?latitude=${lat}&longitude=${lng}&radius=${radius}`,
-      { signal: request.signal },
-    );
-    const data = await res.json();
-    if (data.error) console.warn("Foursquare:", data.error);
-    return (data.pois ?? []) as Poi[];
-  } catch (error) {
-    console.warn("POI error:", error);
-    return [];
-  } finally {
-    request.done();
-  }
-}
+/* ---------- OpenStreetMap for the diagrams (saved file, backend) ---------- */
 
-export async function fetchOvertureBuildings(
+// The OpenStreetMap data of the analytical diagrams, from the backend's saved file (riyadh_osm.parquet, updated
+// every 6 months), in the same shape Overpass returned: roads and transit, and buildings and land use.
+// null when the backend does not answer (the diagram then shows its error and a retry button).
+export async function fetchOsmSurroundings(
   lat: number,
   lng: number,
   radius: number,
   signal?: AbortSignal,
-): Promise<RawBuilding[]> {
+): Promise<{ roads: OverpassResult; context: OverpassResult } | null> {
   const request = limited(signal, 60_000);
   try {
-    const res = await fetch(
-      `${API_URL}/buildings?latitude=${lat}&longitude=${lng}&radius=${radius}`,
-      { signal: request.signal },
-    );
-    const data = await res.json();
-    if (data.error) console.warn("Overture:", data.error);
-    return (data.buildings ?? []) as RawBuilding[];
+    const res = await fetch(`${API_URL}/surroundings?latitude=${lat}&longitude=${lng}&radius=${radius}`, {
+      signal: request.signal,
+    });
+    if (!res.ok) throw new Error(`Surroundings request failed (${res.status})`);
+    const data = (await res.json()) as { roads?: OverpassResult; context?: OverpassResult };
+    return { roads: data.roads ?? { elements: [] }, context: data.context ?? { elements: [] } };
   } catch (error) {
-    console.warn("Overture error:", error);
-    return [];
+    if (signal?.aborted) throw error;
+    console.warn("Surroundings error:", error);
+    return null;
   } finally {
     request.done();
   }
 }
 
-/* ---------- OpenStreetMap (Overpass) ---------- */
-
-const OVERPASS_SERVERS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-];
-
-// Asks all servers at once and takes the first good answer. Returns null when all fail.
-export async function fetchOverpass(
-  query: string,
-  signal?: AbortSignal,
-): Promise<OverpassResult | null> {
-  const controllers = OVERPASS_SERVERS.map(() => new AbortController());
-  const stop = () => controllers.forEach((controller) => controller.abort());
-  const timer = setTimeout(stop, 45_000);
-  if (signal?.aborted) stop();
-  signal?.addEventListener("abort", stop, { once: true });
-
-  try {
-    const result = await Promise.any(
-      OVERPASS_SERVERS.map(async (url, index) => {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "data=" + encodeURIComponent(query),
-          signal: controllers[index].signal,
-        });
-        if (!res.ok) throw new Error(`${url} HTTP ${res.status}`);
-        return (await res.json()) as OverpassResult;
-      }),
-    );
-    stop();
-    return result;
-  } catch (error) {
-    console.warn("Overpass failed", error);
-    return null;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", stop);
-  }
-}
 
 // Road noise level of the plot (low, medium or high). Our backend measures the distance to the nearest road
 // of each class, the same measures as the dataset, and turns them into a level.
-export type NoiseRoadClass = "motorway" | "arterial" | "main" | "collector" | "local" | "footway" | "rail";
+// "shop": the level comes from a shop or commercial land within 50 m, not from a road
+export type NoiseRoadClass = "motorway" | "arterial" | "main" | "collector" | "local" | "footway" | "rail" | "shop";
 export type NoiseResponse = {
   level: "low" | "medium" | "high";
-  reason: { class: NoiseRoadClass; distance: number } | null; // the road that decided the level
-  distances: Record<string, number | null>; // m, from the road edge; null = none within 1000 m
+  reason: { class: NoiseRoadClass; distance: number } | null; // the road (or shop) that decided the level
+  // per direction, dataset Noise_<d> = R + C (0..2), dist_major_<d>, dist_shop_<d> (1000 = none)
+  facades?: Partial<Record<FacadeDirection, { noise: number; road: number; shop: number; distMajor: number; distShop: number }>>;
+  distances: Record<string, number | null>; // m, from the road edge; 1000 = none within 1000 m
 };
 
 // Shared: the analysis page starts it, the results page reuses it.

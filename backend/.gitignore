@@ -4,3 +4,8 @@ __pycache__/
 data/gba_riyadh.parquet
 data/gba_tiles/
 .venv/
+data/riyadh_parcels_all.parquet
+data/_update/
+data/.release_versions.json
+data/riyadh_osm.parquet
+data/*.part

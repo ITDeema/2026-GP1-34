@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/Button";
@@ -9,9 +9,8 @@ import { usePlotCopy } from "@/components/analysis/usePlotCopy";
 import { ANALYSIS_STEPS, fetchNeighborhood, isResidential, lookupPlot, runAnalysis } from "@/lib/analysis";
 import { prefetchIndicators } from "@/lib/analysis-detail";
 import { hasReusableAnalysis } from "@/lib/analysis-store";
-import { hasRecentSurroundings } from "@/lib/surroundings-store";
-import { useProfileRole } from "@/lib/profile-role";
-import { prefetchDiagrams } from "@/lib/site-surroundings";
+import { hasRecentSurroundings, saveSurroundings } from "@/lib/surroundings-store";
+import { loadSurroundings, prefetchDiagrams } from "@/lib/site-surroundings";
 import { boundaryGeoJson, useResults } from "@/lib/results";
 
 type Status = "running" | "failed" | "done";
@@ -73,22 +72,25 @@ function AnalyzingContent() {
   const valid =
   lat !== null && lng !== null && area !== null && villaType !== null;
 
-  // the architect's diagrams start loading too (only architects see them). The surroundings are not fetched
-  // when the plot already has saved ones less than 6 months old (the results page reads those).
-  const { role } = useProfileRole();
+  // the analytical diagrams start loading too, for every user (they are saved with the project; only
+  // architects see them). The surroundings are not fetched when the plot already has saved ones less than
+  // 6 months old (the results page reads those).
+  const recentSurroundings = useRef<boolean | null>(null); // a ref: it must not restart the analysis
   useEffect(() => {
-    if (role !== "architect" || lat === null || lng === null) return;
+    if (lat === null || lng === null) return;
     let active = true;
     lookupPlot({ lat, lng })
       .then((plot) => hasRecentSurroundings(boundaryGeoJson(plot.outline)))
       .catch(() => false)
       .then((recent) => {
-        if (active) prefetchDiagrams(lat, lng, { surroundings: !recent });
+        if (!active) return;
+        recentSurroundings.current = recent;
+        prefetchDiagrams(lat, lng, { surroundings: !recent });
       });
     return () => {
       active = false;
     };
-  }, [role, lat, lng]);
+  }, [lat, lng]);
   useEffect(() => {
     if (lat === null || lng === null || area === null || villaType === null) {
       router.replace("/select-plot");
@@ -131,6 +133,13 @@ function AnalyzingContent() {
           },
         });
         if (controller.signal.aborted) return;
+        // the surroundings are saved with the project, whatever the role (not when the plot already has
+        // recent ones). A failure here never stops the analysis: the results page fetches them again.
+        if (recentSurroundings.current !== true) {
+          loadSurroundings(lat, lng)
+            .then((around) => saveSurroundings(id, around))
+            .catch((error: unknown) => console.warn("Surroundings not saved:", error));
+        }
         setStatus("done");
         redirect = setTimeout(() => router.replace(`/results/${id}`), 900);
       })

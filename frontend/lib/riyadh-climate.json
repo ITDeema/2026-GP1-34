@@ -1,0 +1,247 @@
+{
+ "point": {
+  "latitude": 24.71,
+  "longitude": 46.67
+ },
+ "sunPath": {
+  "arcs": {
+   "summer": [
+    {
+     "hour": 6,
+     "azimuth": 68.944,
+     "altitude": 10.692
+    },
+    {
+     "hour": 7,
+     "azimuth": 73.905,
+     "altitude": 23.561
+    },
+    {
+     "hour": 8,
+     "azimuth": 78.296,
+     "altitude": 36.769
+    },
+    {
+     "hour": 9,
+     "azimuth": 82.424,
+     "altitude": 50.191
+    },
+    {
+     "hour": 10,
+     "azimuth": 86.736,
+     "altitude": 63.745
+    },
+    {
+     "hour": 11,
+     "azimuth": 92.919,
+     "altitude": 77.358
+    },
+    {
+     "hour": 12,
+     "azimuth": 221.285,
+     "altitude": 88.314
+    },
+    {
+     "hour": 13,
+     "azimuth": 268.446,
+     "altitude": 75.158
+    },
+    {
+     "hour": 14,
+     "azimuth": 274.007,
+     "altitude": 61.547
+    },
+    {
+     "hour": 15,
+     "azimuth": 278.239,
+     "altitude": 48.01
+    },
+    {
+     "hour": 16,
+     "azimuth": 282.387,
+     "altitude": 34.617
+    },
+    {
+     "hour": 17,
+     "azimuth": 286.849,
+     "altitude": 21.452
+    },
+    {
+     "hour": 18,
+     "azimuth": 291.932,
+     "altitude": 8.66
+    }
+   ],
+   "equinox": [
+    {
+     "hour": 6,
+     "azimuth": 89.68,
+     "altitude": 0.489
+    },
+    {
+     "hour": 7,
+     "azimuth": 96.048,
+     "altitude": 13.689
+    },
+    {
+     "hour": 8,
+     "azimuth": 103.181,
+     "altitude": 27.095
+    },
+    {
+     "hour": 9,
+     "azimuth": 112.227,
+     "altitude": 40.078
+    },
+    {
+     "hour": 10,
+     "azimuth": 125.351,
+     "altitude": 52.054
+    },
+    {
+     "hour": 11,
+     "azimuth": 146.753,
+     "altitude": 61.623
+    },
+    {
+     "hour": 12,
+     "azimuth": 179.745,
+     "altitude": 65.691
+    },
+    {
+     "hour": 13,
+     "azimuth": 212.897,
+     "altitude": 61.756
+    },
+    {
+     "hour": 14,
+     "azimuth": 234.498,
+     "altitude": 52.254
+    },
+    {
+     "hour": 15,
+     "azimuth": 247.733,
+     "altitude": 40.307
+    },
+    {
+     "hour": 16,
+     "azimuth": 256.84,
+     "altitude": 27.342
+    },
+    {
+     "hour": 17,
+     "azimuth": 264.013,
+     "altitude": 13.948
+    },
+    {
+     "hour": 18,
+     "azimuth": 270.412,
+     "altitude": 0.724
+    }
+   ],
+   "winter": [
+    {
+     "hour": 7,
+     "azimuth": 118.427,
+     "altitude": 4.742
+    },
+    {
+     "hour": 8,
+     "azimuth": 126.056,
+     "altitude": 16.159
+    },
+    {
+     "hour": 9,
+     "azimuth": 135.843,
+     "altitude": 26.444
+    },
+    {
+     "hour": 10,
+     "azimuth": 148.537,
+     "altitude": 34.819
+    },
+    {
+     "hour": 11,
+     "azimuth": 164.484,
+     "altitude": 40.283
+    },
+    {
+     "hour": 12,
+     "azimuth": 182.634,
+     "altitude": 41.824
+    },
+    {
+     "hour": 13,
+     "azimuth": 200.374,
+     "altitude": 39.085
+    },
+    {
+     "hour": 14,
+     "azimuth": 215.419,
+     "altitude": 32.678
+    },
+    {
+     "hour": 15,
+     "azimuth": 227.214,
+     "altitude": 23.666
+    },
+    {
+     "hour": 16,
+     "azimuth": 236.308,
+     "altitude": 12.983
+    },
+    {
+     "hour": 17,
+     "azimuth": 243.451,
+     "altitude": 1.471
+    }
+   ]
+  }
+ },
+ "wind": {
+  "frequencies": {
+   "N": 17.83,
+   "NE": 13.64,
+   "E": 11.4,
+   "SE": 20.67,
+   "S": 13.81,
+   "SW": 3.65,
+   "W": 7.19,
+   "NW": 11.81
+  },
+  "dominant": "SE",
+  "meanSpeed": 2.8,
+  "calmShare": 13.8,
+  "hours": 8760,
+  "seasons": {
+   "summer": {
+    "dominant": "N",
+    "frequencies": {
+     "N": 33.33,
+     "NE": 15.24,
+     "E": 6.85,
+     "SE": 4.7,
+     "S": 4.19,
+     "SW": 2.51,
+     "W": 12.01,
+     "NW": 21.17
+    },
+    "meanSpeed": 3.1
+   },
+   "winter": {
+    "dominant": "SE",
+    "frequencies": {
+     "N": 16.15,
+     "NE": 12.32,
+     "E": 12.43,
+     "SE": 30.69,
+     "S": 13.88,
+     "SW": 1.84,
+     "W": 3.78,
+     "NW": 8.91
+    },
+    "meanSpeed": 2.5
+   }
+  }
+ }
+}

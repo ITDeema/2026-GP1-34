@@ -1,8 +1,10 @@
-import { fetchOverpass, fetchOvertureBuildings, fetchPois, fetchSunPath } from "@/lib/site-api";
+import { fetchOsmSurroundings, fetchSunPath } from "@/lib/site-api";
 import { pointKey, shared, waitFor } from "@/lib/shared-request";
 import type { OsmElement, Poi, RawBuilding, Tags } from "@/lib/site-api";
 
 // Everything around the site, ready to draw. No map code in here.
+// The OpenStreetMap data comes from the backend's saved file (riyadh_osm.parquet, updated every 6 months), in the
+// same shape Overpass gave it, so the diagrams are drawn exactly as before.
 
 export const LAND_RADIUS = 800; // meters shown in the land use and roads diagrams
 
@@ -235,7 +237,8 @@ function refineBuildings(buildings: WorkBuilding[], areas: Area[], pois: Poi[]) 
 const toPts = (geometry: { lat: number; lon: number }[]): LatLngTuple[] =>
   geometry.map((p) => [p.lat, p.lon]);
 
-// Starts the architect's diagrams (sun path and surroundings) as soon as the user presses "start analysis".
+// Starts the analytical diagrams (sun path and surroundings) as soon as the user presses "start analysis",
+// for every user (the surroundings are saved with the project; only architects see them).
 // The analysis does not wait for them (the map servers can be slow); the results page reuses them.
 // `surroundings: false` when the plot already has saved surroundings (less than 6 months old).
 export function prefetchDiagrams(lat: number, lng: number, options: { surroundings?: boolean } = {}): void {
@@ -244,7 +247,7 @@ export function prefetchDiagrams(lat: number, lng: number, options: { surroundin
 }
 
 // Loads roads, buildings, land use and transit stops around the site.
-// Shared: the analysis page starts it (for architects), the results page reuses it.
+// Shared: the analysis page starts it, the results page reuses it.
 export function loadSurroundings(lat: number, lng: number, signal?: AbortSignal): Promise<Surroundings> {
   const request = shared(`around:${pointKey(lat, lng)}`, () =>
     buildSurroundings(lat, lng).then((data) => {
@@ -258,40 +261,13 @@ export function loadSurroundings(lat: number, lng: number, signal?: AbortSignal)
 
 async function buildSurroundings(lat: number, lng: number, signal?: AbortSignal): Promise<Surroundings> {
   const radius = LAND_RADIUS + 60;
-  const around = `(around:${radius},${lat},${lng})`;
-
-  // two lighter queries instead of one heavy one:
-  // roads and transit first, so the roads diagram works even if the second one fails
-  const roadsQuery = `[out:json][timeout:30];
-(
-  way["highway"]${around};
-  way["railway"]${around};
-  node["highway"="bus_stop"]${around};
-  node["railway"~"station|subway_entrance|tram_stop"]${around};
-  node["public_transport"="station"]${around};
-);
-out geom;`;
-
-  const contextQuery = `[out:json][timeout:30];
-(
-  way["building"]${around};
-  relation["building"]${around};
-  way["natural"~"water|wood|scrub|grassland"]${around};
-  way["waterway"]${around};
-  way["leisure"]${around};
-  way["landuse"]${around};
-  way["amenity"~"parking|school|university|college|kindergarten|place_of_worship|hospital|clinic"]${around};
-  relation["leisure"~"park|garden|nature_reserve"]${around};
-  relation["natural"~"water|wood"]${around};
-);
-out geom;`;
-
-  const [roadsData, contextData, pois, overture] = await Promise.all([
-    fetchOverpass(roadsQuery, signal),
-    fetchOverpass(contextQuery, signal),
-    fetchPois(lat, lng, radius, signal),
-    fetchOvertureBuildings(lat, lng, radius, signal),
-  ]);
+  // The same two queries the diagrams used to send to Overpass, now answered from the backend's saved file
+  // (backend/surroundings_api.py): roads and transit, and buildings and land use, within the radius.
+  const saved = await fetchOsmSurroundings(lat, lng, radius, signal);
+  const roadsData = saved?.roads ?? null;
+  const contextData = saved?.context ?? null;
+  const pois: Poi[] = []; // the places and Overture buildings were never served by the backend: drawn without them
+  const overture: RawBuilding[] = [];
 
   const osm = Boolean(roadsData || contextData);
   const elements: OsmElement[] = [...(roadsData?.elements ?? []), ...(contextData?.elements ?? [])];

@@ -75,8 +75,9 @@ const ar = {
   },
   site: {
     title: "مؤشرات الموقع",
-    windSpeed: "سرعة الرياح",
-    windFrom: "اتجاه الرياح (قادمة من)",
+    windSpeed: "متوسط سرعة الرياح صيفًا",
+    windFrom: "اتجاه الرياح السائدة صيفًا (قادمة من)",
+    windShare: "{facade} · {share}%",
     temperature: "متوسط الحرارة العظمى صيفًا",
     density: "الكثافة السكانية",
     densityUnit: "شخص/كم²",
@@ -84,7 +85,7 @@ const ar = {
     maxHeight: "أعلى مبنى مجاور",
     noise: "مستوى الضوضاء",
     noiseReason: "{road} على بعد {meters} م",
-    noiseNone: "لا طريق رئيسي قريب",
+    noiseNone: "لا طريق رئيسي ولا محلات قريبة",
     roadClasses: {
       motorway: "طريق سريع",
       arterial: "طريق رئيسي",
@@ -93,6 +94,7 @@ const ar = {
       local: "شارع فرعي",
       footway: "ممر مشاة",
       rail: "سكة حديد",
+      shop: "محل أو أرض تجارية",
     },
     densityLevels: { low: "منخفضة", medium: "متوسطة", high: "عالية" },
   },
@@ -145,9 +147,9 @@ const ar = {
   },
   wind: {
     title: "اتجاه الرياح",
-    from: "رياح قادمة من {facade}",
+    from: "رياح الصيف قادمة من {facade}",
     hint: "السهم يشير إلى الاتجاه الذي تهب نحوه الرياح.",
-    diagram: "بوصلة تعرض اتجاه الرياح السائدة",
+    diagram: "بوصلة تعرض اتجاه الرياح السائدة صيفًا",
   },
 
     hood: {
@@ -350,8 +352,9 @@ const en: ResultsCopy = {
   },
   site: {
     title: "Site indicators",
-    windSpeed: "Wind speed",
-    windFrom: "Wind direction (coming from)",
+    windSpeed: "Mean summer wind speed",
+    windFrom: "Prevailing summer wind (coming from)",
+    windShare: "{facade} · {share}%",
     temperature: "Average summer high",
     density: "Population density",
     densityUnit: "people/km²",
@@ -359,7 +362,7 @@ const en: ResultsCopy = {
     maxHeight: "Tallest neighboring building",
     noise: "Noise level",
     noiseReason: "{road}, {meters} m away",
-    noiseNone: "No major road nearby",
+    noiseNone: "No major road or shops nearby",
     roadClasses: {
       motorway: "Motorway",
       arterial: "Arterial road",
@@ -368,6 +371,7 @@ const en: ResultsCopy = {
       local: "Local street",
       footway: "Footway",
       rail: "Railway",
+      shop: "Shop or commercial land",
     },
     densityLevels: { low: "Low", medium: "Medium", high: "High" },
   },
@@ -420,9 +424,9 @@ const en: ResultsCopy = {
   },
   wind: {
     title: "Wind direction",
-    from: "Wind from the {facade}",
+    from: "Summer wind from the {facade}",
     hint: "The arrow points the way the wind blows.",
-    diagram: "Compass showing the prevailing wind direction",
+    diagram: "Compass showing the prevailing summer wind",
   },
 
     hood: {

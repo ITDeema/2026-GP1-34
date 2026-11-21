@@ -1,11 +1,13 @@
--- The data of the architect's analytical diagrams (land use and roads), saved per plot in "Plot_Surroundings".
+-- The data of the analytical diagrams (land use and roads), saved per plot in "Plot_Surroundings".
 -- The sun and wind diagram is not saved: it is the same for all of Riyadh.
 -- Run it once in Supabase -> SQL Editor, AFTER analysis-reuse.sql. Safe to run twice; nothing is deleted.
 --
 -- The rule:
---   * Only for architects (the role of the project, Project.roleAtAnalysis). Homeowners never fetch or save it.
---   * A plot's surroundings fetched less than 6 months ago (by any architect) are reused, not fetched again.
+--   * For every project, whatever the user's role: the surroundings are fetched and saved with the analysis
+--     (only architects see the diagrams, but a homeowner who becomes an architect finds them ready).
+--   * A plot's surroundings fetched less than 6 months ago (by anyone) are reused, not fetched again.
 --   * After 6 months a NEW row is added; the old rows stay, so old projects keep the diagrams of their time.
+--   * One row per plot in each 6 months: save_surroundings locks the plot while it checks and saves.
 --   * A project older than 6 months shows the surroundings of its own time (fetched up to 6 months after its
 --     analysis); when it has none, the newest ones. "Update this project" makes it new again, and then it
 --     takes surroundings less than 6 months old (or fetches them).
@@ -39,8 +41,7 @@ create policy "Users can view surroundings of their plots" on public."Plot_Surro
   ));
 
 
--- 2. The surroundings a project shows. null = none saved (the website then fetches them and saves them),
---    or the project is not an architect's.
+-- 2. The surroundings a project shows. null = none saved (the website then fetches them and saves them).
 create or replace function public.project_surroundings(p_project uuid)
 returns jsonb
 language plpgsql
@@ -52,24 +53,19 @@ declare
   v_user uuid := auth.uid();
   v_plot uuid;
   v_date timestamptz;
-  v_role text;
   v_row  public."Plot_Surroundings";
 begin
   if v_user is null then
     raise exception 'Not signed in' using errcode = '28000';
   end if;
 
-  select a."plotID", a."analysisDate", p."roleAtAnalysis" into v_plot, v_date, v_role
+  select a."plotID", a."analysisDate" into v_plot, v_date
     from public."Project" p
     join public."Analysis" a on a."analysisID" = p."analysisID"
     where p."projectID" = p_project and p."userID" = v_user;
   if v_plot is null then
     raise exception 'Project not found';
   end if;
-  if v_role is distinct from 'architect' then
-    return null; -- the diagrams are for architects only
-  end if;
-
   if v_date > now() - interval '6 months' then
     -- a recent analysis: surroundings less than 6 months old
     select * into v_row from public."Plot_Surroundings"
@@ -102,7 +98,7 @@ revoke all on function public.project_surroundings(uuid) from public, anon;
 grant execute on function public.project_surroundings(uuid) to authenticated;
 
 
--- 3. Saves the surroundings the website fetched for a project (architects only).
+-- 3. Saves the surroundings the website fetched for a project (every role).
 --    Not saved again when the plot already has surroundings less than 6 months old (no duplicates).
 create or replace function public.save_surroundings(
   p_project  uuid,
@@ -116,31 +112,31 @@ as $$
 declare
   v_user uuid := auth.uid();
   v_plot uuid;
-  v_role text;
 begin
   if v_user is null then
     raise exception 'Not signed in' using errcode = '28000';
   end if;
 
-  select a."plotID", p."roleAtAnalysis" into v_plot, v_role
+  select a."plotID" into v_plot
     from public."Project" p
     join public."Analysis" a on a."analysisID" = p."analysisID"
     where p."projectID" = p_project and p."userID" = v_user;
   if v_plot is null then
     raise exception 'Project not found';
   end if;
-  if v_role is distinct from 'architect' then
-    raise exception 'The diagrams are for architects only' using errcode = '42501';
-  end if;
   if jsonb_typeof(p_land_use) is distinct from 'object' or jsonb_typeof(p_roads) is distinct from 'object' then
     raise exception 'p_land_use and p_roads must be JSON objects';
   end if;
+
+  -- one save at a time for the same plot: the analysis page and the results page can save at the same moment,
+  -- and without this both would see no row and both insert (two rows for one plot)
+  perform pg_advisory_xact_lock(hashtext(v_plot::text));
 
   if exists (
     select 1 from public."Plot_Surroundings"
     where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
   ) then
-    return false; -- already saved (by this or another architect)
+    return false; -- already saved (by this or another user)
   end if;
 
   insert into public."Plot_Surroundings" ("plotID", "landUseData", "roadsData")
