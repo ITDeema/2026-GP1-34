@@ -30,9 +30,29 @@ export default function HistoryPage() {
     setDeleteFailed(!(await remove(id)));
   }
 
-  const visible = results.filter((r) =>
+ const visible = results
+  .filter((r) =>
     r.name.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  )
+  .sort((a, b) => {
+    // Results that have been opened come first
+    if (a.lastOpenedAt && !b.lastOpenedAt) return -1;
+    if (!a.lastOpenedAt && b.lastOpenedAt) return 1;
+
+    // Both opened: sort by last opened time
+    if (a.lastOpenedAt && b.lastOpenedAt) {
+      return (
+        new Date(b.lastOpenedAt).getTime() -
+        new Date(a.lastOpenedAt).getTime()
+      );
+    }
+
+    // Neither opened: sort by creation date
+    return (
+      new Date(b.date).getTime() -
+      new Date(a.date).getTime()
+    );
+  });
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
