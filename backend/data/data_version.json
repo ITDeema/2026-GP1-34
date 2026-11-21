@@ -1,0 +1,32 @@
+{
+  "version": "2026-11-21",
+  "next": "2027-05-21",
+  "bbox": [
+    46.15,
+    24.25,
+    47.35,
+    25.25
+  ],
+  "files": {
+    "riyadh_streets.parquet": {
+      "rows": 144751,
+      "mb": 17.8
+    },
+    "riyadh_parcels_all.parquet": {
+      "rows": 1283031,
+      "mb": 117.0
+    },
+    "overture_places_riyadh.parquet": {
+      "rows": 45940,
+      "mb": 8.8
+    },
+    "pois_riyadh_merged.parquet": {
+      "rows": 118772,
+      "mb": 4.3
+    },
+    "riyadh_osm.parquet": {
+      "rows": 338516,
+      "mb": 33.3
+    }
+  }
+}
