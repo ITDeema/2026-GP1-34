@@ -121,7 +121,6 @@ function ResultsContent() {
   const [exportOpen, setExportOpen] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [servicesStatus, setServicesStatus] = useState<"loading" | "ready" | "error">("loading");
  
 
   // The indicators load on their own, so a failure only affects their section.
