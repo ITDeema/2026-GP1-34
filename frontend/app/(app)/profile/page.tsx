@@ -157,39 +157,55 @@ useEffect(() => {
       setEmailError("يرجى تسجيل الدخول مرة أخرى.");
       return;
     }
-
   
-    // Check whether the email needs to be changed
-    const newEmail = draftEmail.trim().toLowerCase();
-    const currentEmail = (user.email ?? "").toLowerCase();
+   // Check whether the email needs to be changed
+const newEmail = draftEmail.trim().toLowerCase();
+const currentEmail = (user.email ?? "").trim().toLowerCase();
 
-    if (newEmail !== currentEmail) {
-      // Request email change verification
-      const { error: authError } =
-        await supabase.auth.updateUser({
-          email: newEmail,
-        });
+if (newEmail === currentEmail && draftRole === accountRole) {
+  setEmailError("");
 
-      if (authError) {
-        setEmailError(
-          authError.code === "over_email_send_rate_limit" ||
-          authError.message.toLowerCase().includes("rate limit")
-             ? t("profile.emailRateLimit")
-            : authError.message
-        );
-        return;
-      }
+  toast.error(
+    lang === "ar"
+      ? "لم يتم إجراء أي تغييرات. أدخلي بريدًا إلكترونيًا مختلفًا أو غيّري نوع الحساب."
+      : "No changes were made. Enter a different email address or change your account role."
+  );
 
-      // Open verification modal at step 1
-      setPendingEmail(newEmail);
-      setEmailStep(1);
-      setOldEmailCode("");
-      setNewEmailCode("");
-      setEmailVerifyError("");
-      setDialog("verifyEmail");
-      return;
-    }
+  return;
+}
 
+if (newEmail !== currentEmail) {
+  // Request email change verification
+  const { error: authError } = await supabase.auth.updateUser({
+    email: newEmail,
+  });
+
+  if (authError) {
+  const isEmailAlreadyRegistered =
+    /already been registered|already registered|email.*already.*exists/i.test(
+      authError.message
+    );
+
+  setEmailError(
+    isEmailAlreadyRegistered
+      ? lang === "ar"
+        ? "هذا البريد الإلكتروني مسجّل مسبقًا بحساب آخر."
+        : "This email address is already registered to another account."
+      : authError.message
+  );
+
+  return;
+}
+
+  // Open verification modal at step 1
+  setPendingEmail(newEmail);
+  setEmailStep(1);
+  setOldEmailCode("");
+  setNewEmailCode("");
+  setEmailVerifyError("");
+  setDialog("verifyEmail");
+  return;
+}
     // If only the role changed, save it immediately
     const { error: profileError } = await supabase
       .from("profiles")
@@ -478,10 +494,11 @@ async function verifyEmailChange() {
             variant="secondary"
 
             onClick={() => {
-              setDraftEmail(accountEmail);
-              setDraftRole(accountRole);
-              setEditingAccount(true);
-            }}
+  setDraftEmail(accountEmail);
+  setDraftRole(accountRole);
+  setEmailError("");
+  setEditingAccount(true);
+}}
 
           >
             {t("profile.editAccount")}
@@ -524,10 +541,11 @@ async function verifyEmailChange() {
                   variant="secondary"
 
                   onClick={() => {
-                    setDraftEmail(accountEmail);
-                    setDraftRole(accountRole);
-                    setEditingAccount(false);
-                  }}
+  setDraftEmail(accountEmail);
+  setDraftRole(accountRole);
+  setEmailError("");
+  setEditingAccount(false);
+}}
 
                 >
                   {t("common.cancel")}
