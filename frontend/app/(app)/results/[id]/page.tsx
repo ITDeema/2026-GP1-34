@@ -230,10 +230,9 @@ function ResultsContent() {
       </main>
     );
   }
-const canSave = true;
 
   async function handleSave() {
-    if (!result || !canSave) return;
+    if (!result) return;
     setNotice(null);
     if (!(await setSaved(result.id, !result.saved))) setNotice(c.actions.saveFailed);
   }
@@ -365,9 +364,7 @@ const canSave = true;
           <div className="flex flex-wrap gap-3">
            <Button
             variant="secondary"
-            onClick={handleSave}
-            disabled={!canSave}                                       
-            title={!canSave ? c.actions.saveWait : undefined}  
+            onClick={handleSave}  
             aria-pressed={result.saved}
             className="inline-flex items-center gap-2"
                      >
@@ -461,7 +458,6 @@ const canSave = true;
             lat={lat}
             lng={lng}
             services={ready.services}
-            onStatus={setServicesStatus}
             onLoaded={servicesLoaded}
           />
         </div>
