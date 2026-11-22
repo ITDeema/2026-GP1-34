@@ -80,6 +80,7 @@ const ar = {
   "signup.toLogin": "تسجيل الدخول",
   "signup.agreePrefix": "أوافق على",
   "signup.termsLink": "الشروط والأحكام وسياسة الخصوصية",
+  "signup.accountMayExist": "إذا كان لديك حساب مسبقًا، يرجى تسجيل الدخول بدلًا من إنشاء حساب جديد.",
 
   "profile.accountInfo": "معلومات الحساب",
   "profile.editAccount": "تعديل المعلومات",
@@ -104,6 +105,15 @@ const ar = {
  "profile.deleteWarning":
   "سيتم جدولة حذف حسابك نهائيًا بعد 7 أيام. عند انتهاء المهلة، ستفقد المفضلة وسجل تحليلاتك. إذا سجلت الدخول خلال هذه الفترة، سيتم إلغاء طلب الحذف.",
   "profile.deleteConfirm": "أدخل كلمة المرور لتأكيد الحذف",
+  "profile.verifyEmailTitle": "تأكيد تغيير البريد الإلكتروني",
+  "notifications.loginRequired": "يرجى تسجيل الدخول مرة أخرى",
+  "notifications.languageSaveFailed": "تعذر حفظ اللغة، يرجى المحاولة مرة أخرى",
+  "notifications.logoutFailed": "تعذر تسجيل الخروج، يرجى المحاولة مرة أخرى",
+  "notifications.deleteAccountFailed": "تعذر حذف الحساب. يرجى التحقق من كلمة المرور والمحاولة مرة أخرى",
+"notifications.accountStatusFailed": "تعذر التحقق من حالة الحساب. يرجى المحاولة مرة أخرى",
+"notifications.deletionGraceExpired": "انتهت مهلة إلغاء حذف الحساب",
+"notifications.deletionCancelled": "تم إلغاء طلب حذف الحساب بنجاح",
+"notifications.resetPasswordSuccess": "تم تغيير كلمة المرور بنجاح. يرجى تسجيل الدخول بكلمة المرور الجديدة",
 
   "common.save": "حفظ",
   "common.rename": "إعادة تسمية",
@@ -147,6 +157,27 @@ const ar = {
   "history.deleteBody": "سيُحذف «{name}» من السجل والمفضلات، ولا يمكن التراجع عن ذلك.",
   "history.deleteConfirm": "حذف",
   "history.deleteFailed": "تعذر حذف المشروع. حاول مرة أخرى.",
+
+ 
+  "profile.verifyEmailStep": "الخطوة {step} من 2",
+  "profile.oldEmailCodeSent": "تم إرسال رمز تحقق إلى البريد الإلكتروني القديم. يرجى إدخال الرمز للانتقال إلى الخطوة التالية.",
+  "profile.newEmailCodeSent": "تم قبول رمز البريد الإلكتروني القديم. يرجى إدخال الرمز المرسل إلى البريد الإلكتروني الجديد.",
+  "profile.oldEmailCode": "رمز البريد الإلكتروني القديم",
+  "profile.newEmailCode": "رمز البريد الإلكتروني الجديد",
+  "profile.verifying": "جارٍ التحقق...",
+  "profile.next": "التالي",
+  "profile.confirmEmailChange": "تأكيد تغيير البريد الإلكتروني",
+
+  "profile.emailChangeIncomplete": "لم يكتمل تغيير البريد الإلكتروني بعد",
+  "profile.emailRateLimit": "تم تجاوز الحد المسموح لإرسال رسائل البريد الإلكتروني. يرجى المحاولة لاحقًا",
+  "profile.emailChangedRoleFailed": "تم تغيير البريد الإلكتروني بنجاح، لكن تعذر حفظ نوع الحساب. يرجى المحاولة مرة أخرى",
+  "profile.accountVerificationFailed": "تعذر التحقق من الحساب. يرجى المحاولة مرة أخرى",
+  "profile.enterSixDigitCode": "يرجى إدخال رمز التحقق المكون من 6 أرقام",
+  "profile.oldEmailCodeInvalid": "رمز البريد الإلكتروني القديم غير صحيح أو انتهت صلاحيته",
+  "profile.newEmailCodeInvalid": "رمز البريد الإلكتروني الجديد غير صحيح أو انتهت صلاحيته",
+  "profile.emailUpdatePending": "تم قبول الرمز الجديد، لكن تحديث البريد الإلكتروني لم يكتمل بعد. يرجى عدم إعادة استخدام الرمز",
+  "profile.emailVerificationFailed": "حدث خطأ أثناء التحقق. يرجى المحاولة مرة أخرى",
+
 };
 
 export type TranslationKey = keyof typeof ar;
@@ -211,6 +242,7 @@ const en: Record<TranslationKey, string> = {
   "signup.toLogin": "Log in",
   "signup.agreePrefix": "I agree to the",
   "signup.termsLink": "Terms & Conditions and Privacy Policy",
+  "signup.accountMayExist": "If you already have an account, please log in instead of signing up again.",
 
   "profile.accountInfo": "Account information",
   "profile.editAccount": "Edit information",
@@ -235,6 +267,15 @@ const en: Record<TranslationKey, string> = {
   "profile.deleteWarning":
   "Your account will be permanently deleted after a 7-day grace period. Once this period ends, your favorites and analysis history will be lost. If you log in during these 7 days, your deletion request will be cancelled.",
   "profile.deleteConfirm": "Enter your password to confirm deletion",
+  "notifications.loginRequired": "Please log in again",
+  "notifications.languageSaveFailed": "Unable to save language preference. Please try again",
+  "notifications.logoutFailed": "Unable to log out. Please try again",
+  "notifications.deleteAccountFailed": "Unable to delete the account. Please check the password and try again",
+  "notifications.accountStatusFailed": "Unable to check account status. Please try again",
+  "notifications.deletionGraceExpired": "The account deletion grace period has expired",
+  "notifications.deletionCancelled": "Your account deletion request has been cancelled successfully",
+  "notifications.resetPasswordSuccess": "Password changed successfully. Please log in with your new password",
+
 
   "common.save": "Save",
   "common.rename": "Rename",
@@ -277,6 +318,27 @@ const en: Record<TranslationKey, string> = {
   "history.deleteBody": "“{name}” will be deleted from your history and favorites. This cannot be undone.",
   "history.deleteConfirm": "Delete",
   "history.deleteFailed": "The project could not be deleted. Please try again.",
+
+  "profile.verifyEmailTitle": "Confirm email change",
+  "profile.verifyEmailStep": "Step {step} of 2",
+  "profile.oldEmailCodeSent": "A verification code has been sent to the old email address. Enter the code to continue to the next step.",
+  "profile.newEmailCodeSent": "The old email verification code was accepted. Enter the code sent to the new email address.",
+  "profile.oldEmailCode": "Old email verification code",
+  "profile.newEmailCode": "New email verification code",
+  "profile.verifying": "Verifying...",
+  "profile.next": "Next",
+  "profile.confirmEmailChange": "Confirm email change",
+
+  "profile.emailChangeIncomplete": "The email change has not been completed yet",
+  "profile.emailRateLimit": "The email sending limit has been reached. Please try again later",
+  "profile.emailChangedRoleFailed": "The email address was updated successfully, but the account type could not be saved. Please try again",
+  "profile.accountVerificationFailed": "Unable to verify the account. Please try again",
+  "profile.enterSixDigitCode": "Enter the 6-digit verification code",
+  "profile.oldEmailCodeInvalid": "The old email verification code is invalid or has expired",
+  "profile.newEmailCodeInvalid": "The new email verification code is invalid or has expired",
+  "profile.emailUpdatePending": "The new code was accepted, but the email update is not complete yet. Do not reuse the code",
+  "profile.emailVerificationFailed": "An error occurred during verification. Please try again",
+
 };
 
 const dictionaries: Record<Lang, Record<TranslationKey, string>> = { ar, en };

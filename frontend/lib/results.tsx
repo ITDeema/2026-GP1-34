@@ -204,7 +204,6 @@ export function ResultsProvider({ children }: { children: ReactNode }) {
   async (id: string, saved: boolean) => {
     const before = latest.current.find((r) => r.id === id);
     if (!before) return false;
-    if (saved && !before.complete) return false; // an unfinished analysis cannot be a favorite
     patch(id, { saved });
     const { error } = await supabase.from("Project").update({ isFavorited: saved }).eq("projectID", id);
     if (!error) return true;

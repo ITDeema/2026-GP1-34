@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Input from "@/components/Input";
+import { toast } from "sonner";
+import { useT } from "@/lib/i18n";
 import {
   isValidPassword,
   getPasswordRequirements, 
@@ -16,6 +18,7 @@ import {
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [supabase] = useState(() => createClient());
+  const { t } = useT();
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -91,7 +94,7 @@ export default function ResetPasswordPage() {
     }
 
     await supabase.auth.signOut();
-    alert("تم تغيير كلمة المرور بنجاح. سجلي دخولك بالكلمة الجديدة.");
+    toast.success(t("notifications.resetPasswordSuccess"));
     router.replace("/login");
     router.refresh();
   }

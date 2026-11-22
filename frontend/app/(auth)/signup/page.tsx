@@ -11,6 +11,7 @@ import Input from "@/components/Input";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useT } from "@/lib/i18n";
 import type { Role } from "@/lib/user";
+import { toast } from "sonner";
 import {
   isValidEmail,
   isValidPassword,
@@ -48,7 +49,8 @@ export default function SignupPage() {
      return;
    }
 
-   const { error } = await supabase.auth.signUp({
+   const { data, error } = await supabase.auth.signUp({
+    
      email: email.trim(),
      password,
      options: {
@@ -59,9 +61,15 @@ export default function SignupPage() {
    });
 
    if (error) {
-     alert(error.message);
+     toast.error(error.message);
      return;
-   }
+    }
+    if (data.user?.identities?.length === 0) {
+  toast.error(
+    t("signup.accountMayExist")
+  );
+  return;
+}
      router.push(
       `/verify-email?email=${encodeURIComponent(email.trim())}`
     );

@@ -231,9 +231,7 @@ function ResultsContent() {
       </main>
     );
   }
-
-const canSave =
-  result.saved || (ready !== null && ready.complete === true && (architect || servicesStatus === "ready") && result.complete);
+const canSave = true;
 
   async function handleSave() {
     if (!result || !canSave) return;

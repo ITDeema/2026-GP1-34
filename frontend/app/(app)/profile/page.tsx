@@ -599,18 +599,18 @@ async function verifyEmailChange() {
 >
   <div className="flex flex-col gap-4">
     <p className="text-sm font-semibold text-navy-900">
-      الخطوة {emailStep} من 2
+     {t("profile.verifyEmailStep", { step: emailStep })}
     </p>
 
     <p className="text-sm text-navy-900/70">
-      {emailStep === 1
-        ? "أرسلنا رمز تحقق إلى بريدك الإلكتروني القديم. أدخلي الرمز للانتقال إلى الخطوة التالية."
-        : "تم قبول رمز البريد القديم. أدخلي الآن الرمز المرسل إلى بريدك الإلكتروني الجديد."}
+     {emailStep === 1
+  ? t("profile.oldEmailCodeSent")
+  : t("profile.newEmailCodeSent")}
     </p>
 
     {emailStep === 1 ? (
       <Input
-        label="رمز البريد الإلكتروني القديم"
+        label={t("profile.oldEmailCode")}
         type="text"
         inputMode="numeric"
         autoComplete="one-time-code"
@@ -628,7 +628,7 @@ async function verifyEmailChange() {
       />
     ) : (
       <Input
-        label="رمز البريد الإلكتروني الجديد"
+        label={t("profile.newEmailCode")}
         type="text"
         inputMode="numeric"
         autoComplete="one-time-code"
@@ -663,10 +663,10 @@ async function verifyEmailChange() {
         }
       >
         {emailVerifying
-          ? "جارٍ التحقق..."
-          : emailStep === 1
-            ? "التالي"
-            : "تأكيد تغيير البريد"}
+  ? t("profile.verifying")
+  : emailStep === 1
+    ? t("profile.next")
+    : t("profile.confirmEmailChange")}
       </Button>
 
       <Button
@@ -674,7 +674,7 @@ async function verifyEmailChange() {
         disabled={emailVerifying}
         onClick={() => setDialog(null)}
       >
-        إلغاء
+        {t("common.cancel")}
       </Button>
     </div>
   </div>

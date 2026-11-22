@@ -11,6 +11,7 @@ import { useT } from "@/lib/i18n";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Input from "@/components/Input";
+import { toast } from "sonner";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
@@ -28,12 +29,31 @@ export default function VerifyResetOtpPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setEmail(
-      (params.get("email") ?? "").trim().toLowerCase()
+  
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+
+  setEmail(
+    (params.get("email") ?? "").trim().toLowerCase()
+  );
+
+  const showNotice =
+    sessionStorage.getItem("maamar-reset-notice") === "1";
+
+  if (showNotice) {
+    sessionStorage.removeItem("maamar-reset-notice");
+
+    toast.info(
+      lang === "ar"
+        ? "إذا كان البريد الإلكتروني مرتبطًا بحساب في معمار، فسيصلك رمز تحقق لإعادة تعيين كلمة المرور."
+        : "If this email is associated with a MAAMAR account, you will receive a verification code to reset your password.",
+      {
+        duration: 7000,
+      }
     );
-  }, []);
+  }
+}, [lang]);
+
 
   useEffect(() => {
     if (cooldown <= 0) return;

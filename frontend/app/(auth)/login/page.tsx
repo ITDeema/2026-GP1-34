@@ -10,6 +10,7 @@ import Card from "@/components/Card";
 import Input from "@/components/Input";
 import { useT } from "@/lib/i18n";
 import { isValidEmail } from "@/lib/validation";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const { t, setLang } = useT();
@@ -36,7 +37,7 @@ export default function LoginPage() {
 
     if (error) {
   console.error("Supabase Login Error:", error);
-  alert(error.message);
+  toast.error(error.message);
   return;
 }
 
@@ -50,7 +51,7 @@ const { data: profile, error: profileError } = await supabase
 // Cancel pending account deletion when the user logs in.
 if (profileError) {
   await supabase.auth.signOut();
-  alert("Unable to check account status. Please try again.");
+  toast.error(t("notifications.accountStatusFailed"));
   return;
 }
 
@@ -60,11 +61,11 @@ if (profile?.deletion_requested_at) {
 
   if (cancelError || cancelled !== true) {
     await supabase.auth.signOut();
-    alert("The account deletion grace period has expired.");
+    toast.error(t("notifications.deletionGraceExpired"));
     return;
   }
 
-  alert("Your account deletion has been cancelled.");
+  toast.success(t("notifications.deletionCancelled"));
 }
 
 if (

@@ -12,6 +12,7 @@ import Input from "@/components/Input";
 import { useT } from "@/lib/i18n";
 import { isValidEmail } from "@/lib/validation";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
   const { t, lang } = useT();
@@ -64,9 +65,13 @@ export default function ForgotPasswordPage() {
         // Some providers return different errors for
         // unknown email addresses. Avoid exposing them.
         if (error.code === "user_not_found") {
-          router.push(
-            `/verify-reset-otp?email=${encodeURIComponent(normalizedEmail)}`
-          );
+       
+
+            sessionStorage.setItem("maamar-reset-notice", "1");
+
+router.push(
+  `/verify-reset-otp?email=${encodeURIComponent(normalizedEmail)}`
+);
           return;
         }
 
@@ -78,9 +83,13 @@ export default function ForgotPasswordPage() {
         return;
       }
 
-      router.push(
-        `/verify-reset-otp?email=${encodeURIComponent(normalizedEmail)}`
-      );
+   
+
+              sessionStorage.setItem("maamar-reset-notice", "1");
+
+router.push(
+  `/verify-reset-otp?email=${encodeURIComponent(normalizedEmail)}`
+);
     } catch {
       setRequestError(
         ar
@@ -144,11 +153,7 @@ export default function ForgotPasswordPage() {
         </Button>
       </form>
 
-      <p className="mt-5 text-center text-xs text-navy-900/60">
-        {ar
-          ? "إذا كان البريد مسجلًا، فستصلك رسالة تحتوي على رمز الاستعادة."
-          : "If the email is registered, you will receive a recovery code."}
-      </p>
+      
 
       <p className="mt-6 text-center text-sm">
         <Link
