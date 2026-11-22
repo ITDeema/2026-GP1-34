@@ -11,6 +11,7 @@ import RenameResultModal from "@/components/RenameResultModal";
 import SearchInput from "@/components/SearchInput";
 import StatusMessage from "@/components/analysis/StatusMessage";
 import { formatDate } from "@/lib/format";
+import AppPage from "@/components/AppPage";
 import { useT } from "@/lib/i18n";
 import { useResults } from "@/lib/results";
 import type { AnalysisResult } from "@/lib/results";
@@ -55,6 +56,7 @@ export default function HistoryPage() {
   });
 
   return (
+    <AppPage>
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
       <div>
         <h1 className="font-heading text-2xl font-bold">{t("history.title")}</h1>
@@ -155,5 +157,6 @@ export default function HistoryPage() {
         </div>
       </Modal>
     </main>
+    </AppPage>
   );
 }

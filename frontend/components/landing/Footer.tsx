@@ -8,10 +8,11 @@ export default function Footer() {
   const copy = useCopy();
   const c = copy.footer;
   const links = [
-    { href: "#features", label: copy.nav.features },
-    { href: "#how", label: copy.nav.how },
-    { href: "#audiences", label: copy.nav.audiences },
-    { href: "#faq", label: copy.nav.faq },
+    { href: "/#features", label: copy.nav.features },
+    { href: "/#how", label: copy.nav.how },
+    { href: "/#audiences", label: copy.nav.audiences },
+    { href: "/#faq", label: copy.nav.faq },
+    { href: "/about", label: copy.nav.about },
   ];
 
   return (

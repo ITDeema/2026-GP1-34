@@ -24,10 +24,11 @@ export default function LandingHeader() {
   }, []);
 
   const links = [
-    { href: "#features", label: c.features },
-    { href: "#how", label: c.how },
-    { href: "#audiences", label: c.audiences },
-    { href: "#faq", label: c.faq },
+    { href: "/#features", label: c.features },
+    { href: "/#how", label: c.how },
+    { href: "/#audiences", label: c.audiences },
+    { href: "/#faq", label: c.faq },
+    { href: "/about", label: c.about },
   ];
   const light = !scrolled && !open; // over the dark hero
   const tone = light ? "text-white" : "text-navy-900";

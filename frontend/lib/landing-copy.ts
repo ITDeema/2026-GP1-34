@@ -10,6 +10,7 @@ const ar = {
     how: "كيف تعمل",
     audiences: "لمن؟",
     faq: "الأسئلة",
+    about: "من نحن",
     login: "تسجيل الدخول",
     start: "ابدأ الآن",
     menu: "القائمة",
@@ -195,6 +196,37 @@ const ar = {
     primary: "إنشاء حساب",
     secondary: "تسجيل الدخول",
   },
+  about: {
+    kicker: "من نحن",
+    title: "فريق معمار",
+    sub: "فريق من قسم تقنية المعلومات في جامعة الملك سعود، جمعنا التقنية مع العمارة لنجعل تحليل الموقع أول خطوة في تصميم البيت.",
+    storyKicker: "قصتنا",
+    story:
+      "بدأت معمار كمشروع تخرج يجيب عن سؤال بسيط: لماذا تُتخذ أهم قرارات البيت قبل أن نفهم قطعته؟ في الرياض، تؤثر الشمس والرياح والضوضاء والجيران على راحة السكان واستهلاك الطاقة، ومعظم الملاك لا يصل إليهم هذا التحليل. أنشأنا معمار ليكون بين يديك من أول يوم.",
+    doTitle: "ماذا نقدّم؟",
+    doItems: [
+      {
+        title: "نقرأ الموقع",
+        text: "نجمع بيانات الشمس والظل والرياح والضوضاء والكثافة والخدمات المحيطة بقطعتك.",
+      },
+      {
+        title: "نحوّله إلى قرارات",
+        text: "توصيات تصميمية بلغة واضحة لمالك المنزل، وتفاصيل رقمية للمعماري.",
+      },
+      {
+        title: "نراعي الكود السعودي",
+        text: "كل توصية مرتبطة باشتراطات كود البناء السعودي للمباني السكنية.",
+      },
+    ],
+    teamTitle: "الفريق",
+    members: [
+      { name: "ديما القويعي" },
+      { name: "ريناد القحطاني" },
+      { name: "لينه السماري" },
+      { name: "جنى الدخيل" },
+    ],
+    note: "نتائج معمار إرشادية، ولا تغني عن الدراسة الهندسية المتخصصة أو الاعتمادات الرسمية.",
+  },
   footer: {
     tagline: "تحليل الموقع قبل التصميم",
     links: "روابط",
@@ -212,6 +244,7 @@ const en: LandingCopy = {
     how: "How it works",
     audiences: "Who it's for",
     faq: "FAQ",
+    about: "About us",
     login: "Log in",
     start: "Get started",
     menu: "Menu",
@@ -400,6 +433,37 @@ const en: LandingCopy = {
     sub: "Create your account, then click your plot on the map.",
     primary: "Create an account",
     secondary: "Log in",
+  },
+  about: {
+    kicker: "About us",
+    title: "The MAAMAR team",
+    sub: "A team from the Information Technology Department at King Saud University. We brought technology and architecture together to make site analysis the first step of designing a home.",
+    storyKicker: "Our story",
+    story:
+      "MAAMAR began as a graduation project that asks a simple question: why are the most important decisions about a home made before we understand its plot? In Riyadh, the sun, the wind, noise and the neighbours shape comfort and energy use, yet most owners never get this analysis. We built MAAMAR to put it in your hands from day one.",
+    doTitle: "What we offer",
+    doItems: [
+      {
+        title: "We read the site",
+        text: "We gather sun, shade, wind, noise, density and nearby services data for your plot.",
+      },
+      {
+        title: "We turn it into decisions",
+        text: "Design recommendations in plain language for the homeowner, and numeric detail for the architect.",
+      },
+      {
+        title: "We follow the Saudi code",
+        text: "Every recommendation is tied to the Saudi Building Code requirements for residential buildings.",
+      },
+    ],
+    teamTitle: "The team",
+    members: [
+      { name: "Deema Al-Quwaie" },
+      { name: "Renad Al-Qahtani" },
+      { name: "Linah Al-Samari" },
+      { name: "Jana Al-Dakhil" },
+    ],
+    note: "MAAMAR results are advisory. They do not replace a professional engineering study or official approvals.",
   },
   footer: {
     tagline: "Site analysis before design",

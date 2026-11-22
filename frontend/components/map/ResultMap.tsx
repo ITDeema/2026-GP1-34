@@ -21,6 +21,7 @@ type ResultMapProps = {
   label: string;
   outline?: LatLng[] | null; // the real plot boundary; when missing, a square from width and depth is drawn
   shown?: Facade[] | null; // the façades on display (the four longest walls); the others are not drawn (null = all)
+  preview?: boolean; // a small fixed picture (project cards): no controls, no compass, no letters
 };
 
 const LETTERS: Record<Facade, string> = {
@@ -81,6 +82,7 @@ function drawOutline(
   selected: Facade,
   tips: Record<Facade, string>,
   shown: Facade[] | null,
+  preview: boolean,
 ) {
   L.polygon(
     outline.map((p) => [p.lat, p.lng] as L.LatLngTuple),
@@ -139,6 +141,7 @@ function drawOutline(
   const radius =
     Math.max(...outline.map((p) => Math.hypot((p.lng - center.lng) * metersX, (p.lat - center.lat) * 111_320))) + 4;
   FACADES.forEach((facade, i) => {
+    if (preview) return;
     if (shown !== null && !shown.includes(facade)) return; // only the letters of the façades on display
     const angle = (i * 45 * Math.PI) / 180; // clockwise from north
     L.marker(at(center, radius * Math.sin(angle), radius * Math.cos(angle)), {
@@ -191,6 +194,7 @@ export default function ResultMap({
   label,
   outline,
   shown = null,
+  preview = false,
 }: ResultMapProps) {
   const realOutline = outline && outline.length >= 3 ? outline : null;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -201,7 +205,23 @@ export default function ResultMap({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const map = L.map(container, { center: [lat, lng], zoom: 18, maxZoom: 21, scrollWheelZoom: false });
+    const map = L.map(container, {
+      center: [lat, lng],
+      zoom: 18,
+      maxZoom: 21,
+      scrollWheelZoom: false,
+      ...(preview
+        ? {
+            zoomControl: false,
+            attributionControl: false,
+            dragging: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
+            touchZoom: false,
+          }
+        : {}),
+    });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 21,
       maxNativeZoom: 19, // the tiles are stretched when you zoom in further
@@ -209,7 +229,7 @@ export default function ResultMap({
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
     groupRef.current = L.layerGroup().addTo(map);
-    compassControl().addTo(map);
+    if (!preview) compassControl().addTo(map);
     mapRef.current = map;
     return () => {
       map.remove();
@@ -228,8 +248,8 @@ export default function ResultMap({
     const bounds = realOutline
       ? L.latLngBounds(realOutline.map((p) => [p.lat, p.lng] as L.LatLngTuple))
       : L.latLngBounds([at(center, -width / 2, -depth / 2), at(center, width / 2, depth / 2)]);
-    map.fitBounds(bounds, { padding: [56, 56], maxZoom: 21 });
-  }, [lat, lng, width, depth, realOutline]);
+    map.fitBounds(bounds, { padding: preview ? [14, 14] : [56, 56], maxZoom: 21 });
+  }, [lat, lng, width, depth, realOutline, preview]);
 
   // draw the plot, the building and the colored façades
   useEffect(() => {
@@ -238,7 +258,7 @@ export default function ResultMap({
     group.clearLayers();
 
     if (realOutline) {
-      drawOutline(group, realOutline, heat, selected, tips, shown);
+      drawOutline(group, realOutline, heat, selected, tips, shown, preview);
       return;
     }
 
@@ -321,7 +341,7 @@ export default function ResultMap({
       northwest: [-hw - 3, hd + 3],
     };
     FACADES.forEach((facade) => {
-      if (shown !== null && !shown.includes(facade)) return;
+      if (preview || (shown !== null && !shown.includes(facade))) return;
       const isSelected = facade === selected;
       const [x, y] = spots[facade];
       L.marker(at(center, x, y), {
@@ -330,7 +350,7 @@ export default function ResultMap({
         icon: letterIcon(facade, isSelected),
       }).addTo(group);
     });
-  }, [lat, lng, width, depth, setbacks, heat, selected, tips, realOutline, shown]);
+  }, [lat, lng, width, depth, setbacks, heat, selected, tips, realOutline, shown, preview]);
 
   return <div ref={containerRef} role="application" aria-label={label} className="h-full w-full" />;
 }
