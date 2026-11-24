@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/Badge";
+import Button from "@/components/Button";
 import Card from "@/components/Card";
+import { HeartIcon } from "@/components/IconButton";
+import Modal from "@/components/Modal";
 import { HeroPlot } from "@/components/home/HomeParts";
 import PlotThumbMap from "@/components/home/PlotThumbMap";
 import { IconArrow } from "@/components/landing/Icons";
@@ -13,6 +17,7 @@ import { useT } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
 import { plotCopy } from "@/lib/plot-copy";
 import { useResults } from "@/lib/results";
+import type { AnalysisResult } from "@/lib/results";
 
 const STEPS: { title: TranslationKey; text: TranslationKey }[] = [
   { title: "home.step1", text: "home.step1Text" },
@@ -22,7 +27,13 @@ const STEPS: { title: TranslationKey; text: TranslationKey }[] = [
 
 export default function HomePage() {
   const { t, lang } = useT();
-  const { results, loaded, loadError } = useResults();
+  const { results, loaded, loadError, setSaved } = useResults();
+  const [removing, setRemoving] = useState<AnalysisResult | null>(null);
+
+  function confirmRemove() {
+    if (removing) setSaved(removing.id, false);
+    setRemoving(null);
+  }
 
   const recentProjects = [...results]
     .sort((a, b) => {
@@ -129,19 +140,31 @@ export default function HomePage() {
                         </p>
                       )}
                     </div>
-                    {(project.saved || project.stale) && (
+                    {project.stale && (
                       <div className="flex flex-wrap gap-2">
-                        {project.saved && <Badge tone="success">{t("home.savedBadge")}</Badge>}
-                        {project.stale && <Badge tone="caution">{t("home.stale")}</Badge>}
+                        <Badge tone="caution">{t("home.stale")}</Badge>
                       </div>
                     )}
-                    <Link
-                      href={`/results/${project.id}`}
-                      className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-gold-700 underline"
-                    >
-                      {t("common.viewResults")}
-                      <span aria-hidden="true">↗</span>
-                    </Link>
+                    <div className="mt-auto flex items-center justify-between gap-3">
+                      <Link
+                        href={`/results/${project.id}`}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-gold-700 underline"
+                      >
+                        {t("common.viewResults")}
+                        <span aria-hidden="true">↗</span>
+                      </Link>
+                      {project.saved && (
+                        <button
+                          type="button"
+                          aria-label={t("saved.remove")}
+                          title={t("saved.remove")}
+                          onClick={() => setRemoving(project)}
+                          className="flex h-9 w-9 items-center justify-center rounded-control border border-navy-900/15 bg-white transition-colors hover:border-navy-700 hover:bg-navy-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-700"
+                        >
+                          <HeartIcon />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -150,6 +173,22 @@ export default function HomePage() {
         )}
 
       </div>
+
+      <Modal
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        title={t("saved.remove")}
+      >
+        <p className="text-sm text-navy-900/70">
+          {t("saved.removeBody", { name: removing?.name ?? "" })}
+        </p>
+        <div className="mt-6 flex gap-3">
+          <Button onClick={confirmRemove}>{t("saved.removeConfirm")}</Button>
+          <Button variant="secondary" onClick={() => setRemoving(null)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </Modal>
     </main>
     </AppPage>
   );
