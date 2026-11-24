@@ -8,7 +8,8 @@ King Saud University · Department of Information Technology · IT496 Project
 Maamar is a decision-support platform that automates the environmental and contextual analysis of residential plots in Riyadh. It helps homeowners and architects make informed, Saudi-code-compliant design decisions before construction begins. The system evaluates solar exposure, wind, shading, noise, and surrounding urban density, and presents the results in a dashboard with design decisions.
 
 ## Core Features
-- Role-based dashboards for homeowners (simplified) and architects (advanced indicators)
+- Two account types: homeowners get simplified results,
+  while architects get detailed indicators
 - Hybrid analysis: physics-based calculations, a rule-based compliance layer, and machine learning classifiers
 - Interactive plot selection on a map of Riyadh
 - History and favorites: review, rename, search, and favorite past analyses
