@@ -4,8 +4,8 @@
 
 ## Team Members
 
-| Name | GitHub | Role |
-|---|---|---|
+| Name | GitHub | 
+|---|---|
 | Deema Alquwaei | [@ITDeema](https://github.com/ITDeema) |
 | Renad Alqahtani | [@Renad10](https://github.com/Renad10) |
 | Jana Aldakheel | [@Jana-D1](https://github.com/Jana-D1) |
