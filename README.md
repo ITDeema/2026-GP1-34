@@ -1,115 +1,77 @@
-# Maamar (معمـار)
+# Maamar (معمار)
 
-> **An AI-Powered Environmental Site Analysis Web Platform for Residential Plots in Riyadh.**
+> An AI-powered environmental site analysis web platform for residential plots in Riyadh.
 
 King Saud University · Department of Information Technology · IT496 Project
 
-## 📖 About The Project
-**Maamar** is a decision-support platform that automates and enhances the environmental and contextual analysis of residential land plots in Riyadh. It helps both architects and homeowners make informed, Saudi code compliant, and environmentally optimized design decisions before construction begins.
+## Introduction
+Maamar is a decision-support platform that automates the environmental and contextual analysis of residential plots in Riyadh. It helps homeowners and architects make informed, Saudi-code-compliant design decisions before construction begins. The system evaluates solar exposure, wind, shading, noise, and surrounding urban density, and presents the results in a dashboard with design decisions.
 
-The system evaluates site conditions such as solar exposure, wind patterns, shading, noise, and surrounding urban density, and presents them in a results dashboard with design decisions.
+## Core Features
+- Role-based dashboards for homeowners (simplified) and architects (advanced indicators)
+- Hybrid analysis: physics-based calculations, a rule-based compliance layer, and machine learning classifiers
+- Interactive plot selection on a map of Riyadh
+- History and favorites: review, rename, search, and favorite past analyses
+- Account management (sign-up, login, password change, account deletion with a 7-day grace period)
+- Bilingual interface: Arabic (RTL) and English (LTR)
 
-## 🚀 Core Features
-*   **Role-Based Dashboards:** Interfaces tailored to **Homeowners** (simplified insights) and **Architects** (advanced indicators and in-depth explanations).
-*   **Hybrid Analysis Engine:** Machine learning classifiers, a rule-based compliance layer for local building regulations, and physical and environmental calculations.
-*   **Interactive Plot Selection:** Select a plot on an interactive map of Riyadh.
-*   **History & Favorites:** Review past analyses, rename results, search, and keep favorites.
-*   **Bilingual Interface:** Arabic (right-to-left) and English (left-to-right).
-
-> The sections above describe the full platform. See **Project Status** for what this repository currently contains.
-
-## 📌 Project Status
-
-**Implemented in this repository (frontend)**
-- Landing page, login, sign-up, and forgot-password screens
-- Home screen and map-based plot selection (street and satellite views)
-- Analysis flow and results dashboard: indicators, gauges and level meters, wind card, facade picker, site diagrams (sun and wind, roads, land use), neighbourhood information, regulatory constraints, and design decisions
-- History and Favorite pages, rename-result dialog, export dialog, profile page, and privacy policy
-- Arabic and English interface with right-to-left support
-
-**Not yet implemented**
-- Backend, database, and real authentication. Login and sign-up currently accept any valid-looking input and do not create real accounts.
-- Machine learning models and the rule-based compliance layer
-- Real plot lookup and analysis results. The app currently uses **sample (mock) data** for plots, analysis results, neighbourhood information, and the signed-in user (see `frontend/lib/analysis.ts`, `analysis-detail.ts`, `neighbourhood.ts`, `results.tsx`, and `user.ts`). A badge in the interface marks mock data.
-
-## 🛠️ Technology Stack
+## Technologies Used
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router), React 19, TypeScript |
-| Styling | Tailwind CSS 4 |
-| Maps | Leaflet, with OpenStreetMap and ArcGIS World Imagery tiles |
-| Map data | OpenStreetMap (Overpass API) for roads and land use |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
+| Maps | Leaflet, OpenStreetMap, ArcGIS World Imagery |
+| Backend | Python, FastAPI, Uvicorn |
+| Geospatial / solar | GeoPandas, Shapely, PyProj, pvlib |
+| Database & Auth | Supabase (PostgreSQL, Auth, Row Level Security) |
+| Data sources | OpenStreetMap (Overpass), ArcGIS parcels, Global Building Atlas, ERA5-Land |
 
-## ⚙️ Getting Started
+## Project Structure
+```
+Maamar-GP/
+├── README.md
+├── AUTHORS
+├── frontend/     # Next.js web app (app/, components/, lib/)
+├── backend/      # FastAPI analysis services
+├── supabase/     # SQL schema and migrations
+├── docs/         # Sprint documents
+└── DataSet_Phase1.ipynb   # Dataset building notebook
+```
 
-All commands run from the `frontend` folder.
+## Launch Instructions
 
 ### Prerequisites
-- [Git](https://git-scm.com/)
-- [Node.js](https://nodejs.org/) 20.9 or later, with npm (required by Next.js 16)
-- An internet connection (map tiles and map data are loaded online)
+Git, Node.js 20.9+, Python 3.10+, a Supabase project.
 
-### 1. Clone the repository
+### 1. Clone
 ```bash
 git clone https://github.com/<owner>/<repository>.git
-cd <repository>/frontend
+cd <repository>
 ```
 
-### 2. Install dependencies
+### 2. Backend
 ```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### 3. Frontend
+Create `frontend/.env.local`:
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+SUPABASE_SECRET_KEY=<secret key>   # server only, used for account deletion
+```
+Then:
+```bash
+cd frontend
 npm install
-```
-
-### 3. Run the application
-```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open http://localhost:3000.
 
-### 4. Try the main flow
-1. Open the landing page and go to **Sign up** or **Log in**. Use any valid-looking email and password, because authentication is not connected yet.
-2. On the home screen, choose to analyze a new plot.
-3. On the map, click a location to select a plot.
-4. Start the analysis and wait for the results dashboard.
-5. Open **History** or **Favorites** from the header to see past results.
-
-The interface starts in Arabic. Use the language switch in the header to change to English.
-
-### Optional: analysis backend
-Some diagrams (sun path, nearby places, and buildings) request data from a separate backend, which is **not part of this repository**. By default the app looks for it at `http://127.0.0.1:8000`. Without it, the app still runs, but the sun path diagram cannot load and the nearby places and buildings layers are left out. To point the app at a different backend, create `frontend/.env.local` with:
-```
-NEXT_PUBLIC_API_URL=https://your-backend-url
-```
-
-### Other commands
-```bash
-npm run build   # create a production build
-npm start       # serve the production build
-npm run lint    # check the code with ESLint
-```
-
-## 📁 Project Structure
-```
-<repository>/
-├── README.md
-└── frontend/
-    ├── app/          # Pages: landing, (auth) login/sign-up, (app) home, select-plot, analyzing,
-    │                 #   results, history, saved, profile, privacy policy
-    ├── components/   # Shared UI, plus analysis/, diagrams/, landing/, and map/ components
-    ├── lib/          # Translations, mock data layer, API client, and map helpers
-    ├── public/       # Logo and static assets
-    └── package.json
-```
-
-## 👥 Team
-| Name | GitHub |
-|---|---|
-| `Deema Alquwaei` | [@ITDeema](https://github.com/username) |
-| `Renad Alqahtani` | [@Renad10](https://github.com/username) |
-| `Jana Aldakheel` | [@Jana-D1](https://github.com/username) |
-| `Linah Alsamari` | [@lin-010](https://github.com/username) |
-
-**Supervisor:** `Dr. Naila Alhassoun`
-
-## 📄 License
-Developed as an academic project at King Saud University. All rights reserved by the project team.
+## Team
+See [AUTHORS](AUTHORS).
