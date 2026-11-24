@@ -458,7 +458,7 @@ const en: LandingCopy = {
     ],
     teamTitle: "The team",
     members: [
-      { name: "Deema Al-Quwaie" },
+      { name: "Deema Al-Quwaei" },
       { name: "Renad Al-Qahtani" },
       { name: "Linah Al-Samari" },
       { name: "Jana Al-Dakhil" },

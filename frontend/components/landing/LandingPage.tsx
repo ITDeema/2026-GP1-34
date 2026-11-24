@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import About from "@/components/landing/About";
 import Audiences from "@/components/landing/Audiences";
 import Faq from "@/components/landing/Faq";
 import Features from "@/components/landing/Features";
@@ -34,6 +35,7 @@ export default function LandingPage() {
         <Audiences />
         <Trust />
         <Faq />
+        <About />
         <FinalCta />
       </main>
       <Footer />

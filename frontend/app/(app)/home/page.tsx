@@ -99,7 +99,12 @@ export default function HomePage() {
           </section>
         ) : (
           <section className="flex flex-col gap-5">
-            <h2 className="font-heading text-xl font-bold text-navy-900">{t("home.recent")}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-heading text-xl font-bold text-navy-900">{t("home.recent")}</h2>
+              <Link href="/history" className="text-sm font-semibold text-gold-700 underline">
+                {t("home.viewAll")}
+              </Link>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Link

@@ -12,7 +12,7 @@ export default function Footer() {
     { href: "/#how", label: copy.nav.how },
     { href: "/#audiences", label: copy.nav.audiences },
     { href: "/#faq", label: copy.nav.faq },
-    { href: "/about", label: copy.nav.about },
+    { href: "/#about", label: copy.nav.about },
   ];
 
   return (
