@@ -106,18 +106,18 @@ const ar = {
     items: {
       orientation: {
        title: "اتجاه المبنى",
-       simple: "وجّه الجزء الأكبر من البيت نحو الشمال.",
-       detail: "يوصى بتوجيه الكتلة الرئيسية نحو الشمال لتقليل التعرض المباشر للإشعاع الشمسي.",
+       simple: "وجّه الجزء الأكبر من البيت 5 درجات نحو الشمال.",
+       detail: "يوصى بتوجيه الكتلة الرئيسية 5 درجات نحو الشمال لتقليل التعرض المباشر للإشعاع الشمسي.",
      },
       windows: {
-          title: "تصميم النوافذ",
-         simple: "قلّل الزجاج في الجهة الغربية.",
-        detail: "يوصى بتقليل نسبة الزجاج في الواجهة الغربية للحد من اكتساب الحرارة.",
+          title: "نسب النوافذ",
+         simple: "قلّل نسبة النوافذ في الجهة الغربية.",
+        detail: "الواجهة الغربية هي الأكثر تعرضاً للشمس، لذا يوصى بتقليل نسبة النوافذ فيها. الشمال 15%، الشرق 12%، الغرب 8%، الجنوب 17%.",
       },
       shading: {
        title: "التظليل",
-       simple: "ضع كاسرات شمس على الجهة الجنوبية.",
-       detail: "يوصى بإضافة كاسرات شمس على الواجهة الجنوبية لتقليل الإشعاع الشمسي المباشر.",
+       simple: "ضع كاسرات شبكية على الجهة الجنوبية.",
+       detail: "يوصى بوضع كاسرات شبكية على الواجهة الجنوبية لتقليل الإشعاع الشمسي المباشر.",
      },
      garden: {
      title: "موقع الحديقة",
@@ -384,18 +384,18 @@ const en: ResultsCopy = {
     items: {
       orientation: {
        title: "Building orientation",
-       simple: "Face most of the house to the north.",
-       detail: "Orienting the main building mass toward the north is recommended to reduce direct solar radiation exposure.",
+       simple: "Rotate most of the house 5° toward the north.",
+       detail: "It is recommended to rotate the main building mass 5° toward the north to reduce direct solar exposure.",
      },
      windows: {
-       title: "Window design",
-       simple: "Use less glass on the west side.",
-       detail: "Reducing glazing on the western facade is recommended to minimize heat gain.",
+       title: "Window ratios",
+       simple: "Use a smaller window ratio on the west side.",
+       detail: "The western facade is the most exposed to the sun, so reducing its window ratio is recommended. North 15%, East 12%, West 8%, South 17%.",
      },
      shading: {
        title: "Shading",
-       simple: "Add sun breakers on the south side.",
-       detail: "Adding sun-shading devices to the southern facade is recommended to reduce direct solar radiation.",
+       simple: "Add lattice screens on the south side.",
+       detail: "It is recommended to place lattice screens on the southern facade to reduce direct solar radiation.",
      },
      garden: {
        title: "Garden placement",

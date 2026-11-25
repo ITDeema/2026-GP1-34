@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,6 +18,8 @@ import {
   getPasswordRequirements,
 } from "@/lib/validation";
 
+const DRAFT_KEY = "maamar-signup-draft";
+
 export default function SignupPage() {
   const { t } = useT();
   const router = useRouter();
@@ -29,6 +31,38 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  // استرجاع المسودة (بدون كلمات المرور) عند الرجوع من صفحة الخصوصية
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.role === "homeowner" || draft.role === "architect") {
+          setRole(draft.role);
+        }
+        if (typeof draft.email === "string") setEmail(draft.email);
+        if (typeof draft.accepted === "boolean") setAccepted(draft.accepted);
+      }
+    } catch {
+      // تجاهل أي خطأ في القراءة
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  // حفظ المسودة عند أي تغيير (بعد ما تنقرأ المسودة القديمة)
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ role, email, accepted })
+      );
+    } catch {
+      // تجاهل أي خطأ في الكتابة
+    }
+  }, [draftLoaded, role, email, accepted]);
 
   
   const emailError = isValidEmail(email) ? undefined : t("error.emailInvalid");
@@ -70,6 +104,9 @@ export default function SignupPage() {
   );
   return;
 }
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
      router.push(
       `/verify-email?email=${encodeURIComponent(email.trim())}`
     );
