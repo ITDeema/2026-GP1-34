@@ -1,4 +1,4 @@
-# Maamar (معمار)
+# Maamar (معمـار)
 
 > An AI-powered environmental site analysis web platform for residential plots in Riyadh.
 
