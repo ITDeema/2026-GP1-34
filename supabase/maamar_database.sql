@@ -90,6 +90,7 @@ create table if not exists public."Site_Indicator" (
   "analysisID"    uuid not null references public."Analysis" ("analysisID") on update cascade on delete cascade,
   "indicatorName" text not null,
   facade          text,
+  "nearestService" text,   -- the kind of service (mosque, hospital...) of the serviceDistance / serviceCount rows
   value           double precision,
   unit            text
 );

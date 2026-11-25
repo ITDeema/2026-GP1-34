@@ -1,4 +1,4 @@
--- The data of the analytical diagrams (land use and roads), saved per plot in "Plot_Surroundings".
+-- The data of the analytical diagrams (land use and roads), saved per plot in "Analytical_diagrams".
 -- The sun and wind diagram is not saved: it is the same for all of Riyadh.
 -- Run it once in Supabase -> SQL Editor, AFTER analysis-reuse.sql. Safe to run twice; nothing is deleted.
 --
@@ -12,31 +12,56 @@
 --     analysis); when it has none, the newest ones. "Update this project" makes it new again, and then it
 --     takes surroundings less than 6 months old (or fetches them).
 
--- 1. The table (Plot 1 —— 0..* Plot_Surroundings)
-create table if not exists public."Plot_Surroundings" (
-  "surroundingsID" uuid primary key default gen_random_uuid(),
+-- 0. The table used to be called "Plot_Surroundings" (key "surroundingsID"). If it still has the old names,
+--    they are renamed here; if it already has the new ones, nothing happens. No data is touched.
+do $$
+begin
+  if to_regclass('public."Plot_Surroundings"') is not null
+     and to_regclass('public."Analytical_diagrams"') is null then
+    alter table public."Plot_Surroundings" rename to "Analytical_diagrams";
+  end if;
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'Analytical_diagrams' and column_name = 'surroundingsID') then
+    alter table public."Analytical_diagrams" rename column "surroundingsID" to "diagramID";
+  end if;
+  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_pkey'
+             and conrelid = to_regclass('public."Analytical_diagrams"')) then
+    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_pkey" to "Analytical_diagrams_pkey";
+  end if;
+  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_plotID_fkey'
+             and conrelid = to_regclass('public."Analytical_diagrams"')) then
+    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_plotID_fkey" to "Analytical_diagrams_plotID_fkey";
+  end if;
+  if to_regclass('public."Plot_Surroundings_plot_idx"') is not null then
+    alter index public."Plot_Surroundings_plot_idx" rename to "Analytical_diagrams_plot_idx";
+  end if;
+end $$;
+
+-- 1. The table (Plot 1 —— 0..* Analytical_diagrams)
+create table if not exists public."Analytical_diagrams" (
+  "diagramID" uuid primary key default gen_random_uuid(),
   "plotID"         uuid not null references public."Plot" ("plotID") on delete cascade,
   "landUseData"    jsonb not null,
   "roadsData"      jsonb not null,
   "fetchedAt"      timestamptz not null default now()
 );
 
-alter table public."Plot_Surroundings" drop column if exists radius;
-alter table public."Plot_Surroundings" drop column if exists source;
+alter table public."Analytical_diagrams" drop column if exists radius;
+alter table public."Analytical_diagrams" drop column if exists source;
 
-create index if not exists "Plot_Surroundings_plot_idx"
-  on public."Plot_Surroundings" ("plotID", "fetchedAt" desc);
+create index if not exists "Analytical_diagrams_plot_idx"
+  on public."Analytical_diagrams" ("plotID", "fetchedAt" desc);
 
-alter table public."Plot_Surroundings" enable row level security;
+alter table public."Analytical_diagrams" enable row level security;
 
 -- the user reads the surroundings of the plots in their own projects (writing is only through save_surroundings)
-drop policy if exists "Users can view surroundings of their plots" on public."Plot_Surroundings";
-create policy "Users can view surroundings of their plots" on public."Plot_Surroundings"
+drop policy if exists "Users can view surroundings of their plots" on public."Analytical_diagrams";
+create policy "Users can view surroundings of their plots" on public."Analytical_diagrams"
   for select to authenticated
   using (exists (
     select 1 from public."Analysis" a
     join public."Project" p on p."analysisID" = a."analysisID"
-    where a."plotID" = "Plot_Surroundings"."plotID"
+    where a."plotID" = "Analytical_diagrams"."plotID"
       and p."userID" = (select auth.uid())
   ));
 
@@ -53,7 +78,7 @@ declare
   v_user uuid := auth.uid();
   v_plot uuid;
   v_date timestamptz;
-  v_row  public."Plot_Surroundings";
+  v_row  public."Analytical_diagrams";
 begin
   if v_user is null then
     raise exception 'Not signed in' using errcode = '28000';
@@ -68,22 +93,22 @@ begin
   end if;
   if v_date > now() - interval '6 months' then
     -- a recent analysis: surroundings less than 6 months old
-    select * into v_row from public."Plot_Surroundings"
+    select * into v_row from public."Analytical_diagrams"
       where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
       order by "fetchedAt" desc limit 1;
   else
     -- an analysis older than 6 months: the surroundings of its own time, otherwise the newest ones
-    select * into v_row from public."Plot_Surroundings"
+    select * into v_row from public."Analytical_diagrams"
       where "plotID" = v_plot and "fetchedAt" <= v_date + interval '6 months'
       order by "fetchedAt" desc limit 1;
-    if v_row."surroundingsID" is null then
-      select * into v_row from public."Plot_Surroundings"
+    if v_row."diagramID" is null then
+      select * into v_row from public."Analytical_diagrams"
         where "plotID" = v_plot
         order by "fetchedAt" desc limit 1;
     end if;
   end if;
 
-  if v_row."surroundingsID" is null then
+  if v_row."diagramID" is null then
     return null;
   end if;
   return jsonb_build_object(
@@ -133,13 +158,13 @@ begin
   perform pg_advisory_xact_lock(hashtext(v_plot::text));
 
   if exists (
-    select 1 from public."Plot_Surroundings"
+    select 1 from public."Analytical_diagrams"
     where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
   ) then
     return false; -- already saved (by this or another user)
   end if;
 
-  insert into public."Plot_Surroundings" ("plotID", "landUseData", "roadsData")
+  insert into public."Analytical_diagrams" ("plotID", "landUseData", "roadsData")
     values (v_plot, p_land_use, p_roads);
   return true;
 end;
@@ -161,7 +186,7 @@ as $$
   select auth.uid() is not null and p_boundary is not null and exists (
     select 1
     from public."Plot" pl
-    join public."Plot_Surroundings" s on s."plotID" = pl."plotID"
+    join public."Analytical_diagrams" s on s."plotID" = pl."plotID"
     where pl."boundaryKey" = md5(p_boundary::text)
       and s."fetchedAt" > now() - interval '6 months'
   );

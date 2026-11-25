@@ -202,7 +202,7 @@ grant execute on function public.own_analysis(uuid) to authenticated;
 
 -- 5. The nearest services, when they arrive after the analysis was saved (they load on their own).
 --    Only fills them in when they are missing, so it never changes what another user already sees.
---    p_rows go into Site_Indicator (one distance row and one count row per service kind).
+--    p_rows go into Site_Indicator (one distance row and one count row per service kind; the kind is in "nearestService").
 drop function if exists public.add_services(uuid, jsonb, jsonb);
 
 create or replace function public.add_services(
@@ -241,10 +241,10 @@ begin
     return false;
   end if;
 
-  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, value, unit)
-    select v_analysis, r."indicatorName", r.facade, r.value, r.unit
+  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
+    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
     from jsonb_to_recordset(p_rows)
-      as r ("indicatorName" text, facade text, value double precision, unit text)
+      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
     where r."indicatorName" in ('serviceDistance', 'serviceCount');
   return found;
 end;

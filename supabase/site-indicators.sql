@@ -1,5 +1,5 @@
 -- Saves and reads the indicators of an analysis as rows in "Site_Indicator" (one row per indicator, and per
--- facade for the facade indicators), as the ER diagram says. These rows are the ONLY place the results are kept:
+-- facade for the facade indicators; the nearest-services rows keep their service kind in "nearestService"), as the ER diagram says. These rows are the ONLY place the results are kept:
 -- opening a result from the history rebuilds the dashboard from them (Analysis.results is no longer used).
 -- Run it once in Supabase -> SQL Editor, AFTER maamar_database.sql. Safe to run twice; nothing is deleted
 -- except the old rows of an analysis when it is saved again.
@@ -61,10 +61,10 @@ begin
 
   delete from public."Site_Indicator" where "analysisID" = v_analysis;
 
-  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, value, unit)
-    select v_analysis, r."indicatorName", r.facade, r.value, r.unit
+  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
+    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
     from jsonb_to_recordset(p_rows)
-      as r ("indicatorName" text, facade text, value double precision, unit text)
+      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
     where r."indicatorName" is not null;
   get diagnostics v_count = row_count;
 

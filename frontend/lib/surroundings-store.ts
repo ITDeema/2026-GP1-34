@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Surroundings } from "@/lib/site-surroundings";
 
-// The architect's diagrams (land use and roads) are saved per plot in "Plot_Surroundings" and reused for
+// The architect's diagrams (land use and roads) are saved per plot in "Analytical_diagrams" and reused for
 // 6 months by every architect who analyses the same plot (see supabase/plot-surroundings.sql).
 // The sun and wind diagram is not saved: it is the same for all of Riyadh.
 

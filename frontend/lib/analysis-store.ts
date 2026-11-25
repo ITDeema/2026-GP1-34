@@ -18,6 +18,7 @@ export const RESULTS_VERSION = "v4";
 export type IndicatorRow = {
   indicatorName: string;
   facade: string | null;
+  nearestService?: string | null; // only the nearest-services rows: the service kind (mosque, hospital...)
   value: number;
   unit: string;
 };
@@ -100,20 +101,26 @@ export function neighbourRows(neighbours: NonNullable<IndicatorsData["neighbours
   return rows;
 }
 
-// The nearest services as Site_Indicator rows: for each kind (in the facade column) the distance to the
+// The nearest services as Site_Indicator rows: for each kind (in the nearestService column) the distance to the
 // nearest one and how many there are. No distance row when there is none of that kind nearby.
 export function serviceRows(services: Service[]): IndicatorRow[] {
   const rows: IndicatorRow[] = [];
   for (const service of services) {
     if (typeof service.distance === "number" && Number.isFinite(service.distance)) {
-      rows.push({ indicatorName: "serviceDistance", facade: service.kind, value: service.distance, unit: "m" });
+      rows.push({ indicatorName: "serviceDistance", facade: null, nearestService: service.kind, value: service.distance, unit: "m" });
     }
-    rows.push({ indicatorName: "serviceCount", facade: service.kind, value: service.count, unit: "count" });
+    rows.push({ indicatorName: "serviceCount", facade: null, nearestService: service.kind, value: service.count, unit: "count" });
   }
   return rows;
 }
 
-type SavedRow = { indicatorName: string; facade: string | null; value: number | string; unit: string | null };
+type SavedRow = {
+  indicatorName: string;
+  facade: string | null;
+  nearestService?: string | null;
+  value: number | string;
+  unit: string | null;
+};
 type SavedAnalysis = { status?: string; version?: string; Site_Indicator?: SavedRow[] | null };
 
 const isFacade = (value: string | null): value is Facade => FACADES.includes(value as Facade);
@@ -159,7 +166,8 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
       const key = NEIGHBOUR_FLAGS.find(([rowName]) => rowName === name)![1];
       neighbours[facade][key] = value === 1;
     } else if (name === "serviceDistance" || name === "serviceCount") {
-      const kind = facade as ServiceKind;
+      // rows saved before the nearestService column kept the kind in the facade column
+      const kind = (row.nearestService ?? facade) as ServiceKind;
       const service = kinds.get(kind) ?? { kind, distance: null, count: 0 };
       if (name === "serviceDistance") service.distance = value;
       else service.count = value;
@@ -203,7 +211,7 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
 export async function loadSavedResults(projectId: string): Promise<IndicatorsData | null> {
   const { data, error } = await createClient()
     .from("Project")
-    .select("Analysis(status, version, Site_Indicator(indicatorName, facade, value, unit))")
+    .select("Analysis(status, version, Site_Indicator(indicatorName, facade, nearestService, value, unit))")
     .eq("projectID", projectId)
     .maybeSingle();
   if (error) {
