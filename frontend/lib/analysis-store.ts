@@ -1,14 +1,18 @@
 import { createClient } from "@/lib/supabase/client";
 import { FACADES, METRICS } from "@/lib/analysis-detail";
-import type { IndicatorsData, MetricKey } from "@/lib/analysis-detail";
-import type { Service } from "@/lib/neighbourhood";
+import type { Facade, FacadeIndicators, IndicatorsData, Level, MetricKey } from "@/lib/analysis-detail";
+import { SERVICE_KINDS } from "@/lib/neighbourhood";
+import type { Service, ServiceKind } from "@/lib/neighbourhood";
+import type { FacadeNeighbours, NoiseRoadClass } from "@/lib/site-api";
 
-// The indicators of a finished analysis are kept in the database (Analysis.results), so opening a result
-// from the history shows exactly what was calculated then, without calculating again.
-// Row level security makes sure each user only reads and writes their own analyses.
+// The indicators of a finished analysis are kept ONLY in "Site_Indicator" (one row per indicator, and per
+// facade for the facade indicators), as the ER diagram says. Opening a result from the history rebuilds the
+// dashboard from those rows, so it shows exactly what was calculated then, without calculating again.
+// Row level security makes sure each user only reads and writes the rows of their own analyses.
 
-// Raise it when the shape of IndicatorsData changes, so older saved results are calculated again.
-export const RESULTS_VERSION = 3; // 2: the building is the user's design (their land area and height); 3: services saved
+// Raise it when the shape of the saved rows changes, so older saved analyses are calculated again.
+// It is kept in Analysis.version. v3: the building is the user's design, services saved; v4: read from Site_Indicator only.
+export const RESULTS_VERSION = "v4";
 
 // One row of Site_Indicator (the ER diagram keeps every indicator in its own row).
 export type IndicatorRow = {
@@ -25,6 +29,9 @@ const METRIC_UNITS: Record<MetricKey, string> = {
   sky: "ratio",
 };
 const NOISE_NUMBER = { low: 1, medium: 2, high: 3 } as const;
+const NOISE_LEVELS: Level[] = ["low", "medium", "high"];
+const DENSITY_NUMBER = { L: 1, M: 2, H: 3 } as const;
+const DENSITY_LEVELS = ["L", "M", "H"] as const;
 
 // The indicators of an analysis as Site_Indicator rows. Empty values (no wall, no data) are left out.
 export function indicatorRows(data: IndicatorsData): IndicatorRow[] {
@@ -39,8 +46,10 @@ export function indicatorRows(data: IndicatorsData): IndicatorRow[] {
 
   const site = data.site;
   add("windSpeed", site.windFrom, site.windSpeed, "m/s"); // the facade is the side the wind comes from
+  add("windShare", site.windFrom, site.windShare, "%");
   add("temperature", null, site.temperature, "C");
   add("density", null, site.density, "people/km2");
+  if (site.densityLevel) add("densityLevel", null, DENSITY_NUMBER[site.densityLevel], "level (1 L, 2 M, 3 H)");
   add("avgHeight", null, site.avgHeight, "m");
   add("maxHeight", null, site.maxHeight, "m");
   if (site.noise) add("noiseLevel", null, NOISE_NUMBER[site.noise], "level (1 low, 2 medium, 3 high)");
@@ -53,6 +62,21 @@ export function indicatorRows(data: IndicatorsData): IndicatorRow[] {
 // The neighbours of each façade (the neighbours card): from this side of the plot, the distance to the street
 // in front of it and its width, and the distance to the nearest building straight in front of it and its height.
 // 300 m = no building within 300 m; height 0 = none. A value the backend did not send has no row.
+// Site_Indicator.value is a number, so the words of the card (the use next to the plot, across the street,
+// the street class and name) are kept in the row's "unit" column, with value 0; an estimate flag is 1 or 0.
+const NEIGHBOUR_TEXTS = [
+  ["neighbourUse", "use"],
+  ["neighbourAcross", "across"],
+  ["neighbourModelUse", "modelUse"],
+  ["neighbourModelAcross", "modelAcross"],
+  ["streetClass", "streetClass"],
+  ["streetName", "streetName"],
+] as const;
+const NEIGHBOUR_FLAGS = [
+  ["streetWidthEstimated", "streetWidthEstimated"],
+  ["useEstimated", "useEstimated"],
+] as const;
+
 export function neighbourRows(neighbours: NonNullable<IndicatorsData["neighbours"]>): IndicatorRow[] {
   const rows: IndicatorRow[] = [];
   const add = (indicatorName: string, facade: string, value: number | null | undefined) => {
@@ -65,6 +89,13 @@ export function neighbourRows(neighbours: NonNullable<IndicatorsData["neighbours
     add("streetWidth", facade, n.streetWidth);
     add("nearestBuildingDistance", facade, n.nearestDistance);
     add("nearestBuildingHeight", facade, n.nearestHeight);
+    for (const [indicatorName, key] of NEIGHBOUR_TEXTS) {
+      const text = n[key];
+      if (typeof text === "string" && text !== "") rows.push({ indicatorName, facade, value: 0, unit: text });
+    }
+    for (const [indicatorName, key] of NEIGHBOUR_FLAGS) {
+      if (typeof n[key] === "boolean") rows.push({ indicatorName, facade, value: n[key] ? 1 : 0, unit: "flag" });
+    }
   }
   return rows;
 }
@@ -82,43 +113,107 @@ export function serviceRows(services: Service[]): IndicatorRow[] {
   return rows;
 }
 
-type Stored = { version: number; savedAt: string; data: IndicatorsData };
+type SavedRow = { indicatorName: string; facade: string | null; value: number | string; unit: string | null };
+type SavedAnalysis = { status?: string; version?: string; Site_Indicator?: SavedRow[] | null };
 
-// A saved value is accepted only when it has the shape the dashboard needs.
-function isStored(value: unknown): value is Stored {
-  if (typeof value !== "object" || value === null) return false;
-  const stored = value as Partial<Stored>;
-  const data = stored.data as Partial<IndicatorsData> | undefined;
-  return (
-    stored.version === RESULTS_VERSION &&
-    typeof data === "object" &&
-    data !== null &&
-    typeof data.facades === "object" &&
-    data.facades !== null &&
-    typeof data.site === "object" &&
-    data.site !== null &&
-    data.complete === true
-  );
+const isFacade = (value: string | null): value is Facade => FACADES.includes(value as Facade);
+
+// Rebuilds the dashboard data from the Site_Indicator rows of an analysis (the opposite of indicatorRows).
+// Returns null unless the analysis is finished, in the current version, and has its wind and temperature.
+export function dataFromRows(analysis: SavedAnalysis | null | undefined): IndicatorsData | null {
+  if (!analysis || analysis.status !== "completed" || analysis.version !== RESULTS_VERSION) return null;
+  const rows = analysis.Site_Indicator ?? [];
+  if (rows.length === 0) return null;
+
+  const facades = {} as Record<Facade, FacadeIndicators>;
+  for (const facade of FACADES) facades[facade] = { radiation: null, shade: null, wind: null, sky: null };
+  const neighbours = {} as Record<Facade, FacadeNeighbours>;
+  for (const facade of FACADES) {
+    neighbours[facade] = {
+      use: null, across: null, streetWidth: null, streetClass: null, streetName: null,
+      nearestDistance: 300, nearestHeight: 0,
+    };
+  }
+  let hasNeighbours = false;
+  const kinds = new Map<ServiceKind, Service>();
+  const siteValues = new Map<string, { facade: string | null; value: number }>();
+
+  for (const row of rows) {
+    const value = Number(row.value);
+    const name = row.indicatorName;
+    const facade = row.facade;
+    if (METRICS.includes(name as MetricKey) && isFacade(facade)) {
+      if (Number.isFinite(value)) facades[facade][name as MetricKey] = value;
+    } else if (isFacade(facade) && ["streetDistance", "streetWidth", "nearestBuildingDistance", "nearestBuildingHeight"].includes(name)) {
+      hasNeighbours = true;
+      const n = neighbours[facade];
+      if (name === "streetDistance") n.streetDistance = value;
+      else if (name === "streetWidth") n.streetWidth = value;
+      else if (name === "nearestBuildingDistance") n.nearestDistance = value;
+      else n.nearestHeight = value;
+    } else if (isFacade(facade) && NEIGHBOUR_TEXTS.some(([rowName]) => rowName === name)) {
+      hasNeighbours = true;
+      const key = NEIGHBOUR_TEXTS.find(([rowName]) => rowName === name)![1];
+      (neighbours[facade] as Record<string, unknown>)[key] = row.unit ?? null;
+    } else if (isFacade(facade) && NEIGHBOUR_FLAGS.some(([rowName]) => rowName === name)) {
+      const key = NEIGHBOUR_FLAGS.find(([rowName]) => rowName === name)![1];
+      neighbours[facade][key] = value === 1;
+    } else if (name === "serviceDistance" || name === "serviceCount") {
+      const kind = facade as ServiceKind;
+      const service = kinds.get(kind) ?? { kind, distance: null, count: 0 };
+      if (name === "serviceDistance") service.distance = value;
+      else service.count = value;
+      kinds.set(kind, service);
+    } else if (Number.isFinite(value)) {
+      siteValues.set(name, { facade, value });
+    }
+  }
+
+  const wind = siteValues.get("windSpeed");
+  const temperature = siteValues.get("temperature");
+  if (!wind || !isFacade(wind.facade) || !temperature) return null;
+  const noise = siteValues.get("noiseLevel");
+  const noiseWhy = siteValues.get("noiseDistance");
+  const density = siteValues.get("densityLevel");
+  const num = (name: string) => siteValues.get(name)?.value ?? null;
+
+  const services = SERVICE_KINDS.filter((kind) => kinds.has(kind)).map((kind) => kinds.get(kind)!);
+  return {
+    complete: true,
+    facades,
+    site: {
+      windSpeed: wind.value,
+      windFrom: wind.facade,
+      windShare: num("windShare"),
+      temperature: temperature.value,
+      density: num("density"),
+      densityLevel: density ? (DENSITY_LEVELS[density.value - 1] ?? null) : null,
+      avgHeight: num("avgHeight"),
+      maxHeight: num("maxHeight"),
+      noise: noise ? (NOISE_LEVELS[noise.value - 1] ?? null) : null,
+      noiseReason: noiseWhy?.facade ? { roadClass: noiseWhy.facade as NoiseRoadClass, distance: noiseWhy.value } : null,
+    },
+    neighbours: hasNeighbours ? neighbours : null,
+    services: services.length > 0 ? services : null,
+  };
 }
 
-// A project points to its analysis (Project.analysisID -> Analysis.analysisID).
-// Returns null when nothing complete is saved for this project (or it could not be read).
+// A project points to its analysis (Project.analysisID -> Analysis.analysisID), and the analysis has its
+// Site_Indicator rows. Returns null when nothing complete is saved for this project (or it could not be read).
 export async function loadSavedResults(projectId: string): Promise<IndicatorsData | null> {
   const { data, error } = await createClient()
     .from("Project")
-    .select("Analysis(results)")
+    .select("Analysis(status, version, Site_Indicator(indicatorName, facade, value, unit))")
     .eq("projectID", projectId)
     .maybeSingle();
   if (error) {
     console.error("Saved results error:", error.message);
     return null;
   }
-  const analysis = (data as { Analysis?: { results?: unknown } | null } | null)?.Analysis;
-  const results = analysis?.results;
-  return isStored(results) ? results.data : null;
+  return dataFromRows((data as { Analysis?: SavedAnalysis | null } | null)?.Analysis);
 }
 
-// Saves a COMPLETE analysis. An incomplete one (the backend did not answer) is never saved.
+// Saves a COMPLETE analysis as Site_Indicator rows. An incomplete one (the backend did not answer) is never saved.
 // Resolves to true when saved.
 export async function saveResults(
   projectId: string,
@@ -127,7 +222,6 @@ export async function saveResults(
 ): Promise<boolean> {
   if (data.complete !== true) return false;
   const supabase = createClient();
-  let analysisId: string | undefined;
   if (options.renew) {
     // Copy-on-write: when other projects use the same analysis, this project gets its own copy first,
     // so updating it never changes what the other users see (see supabase/analysis-reuse.sql).
@@ -136,38 +230,19 @@ export async function saveResults(
       console.error("Save results error:", own.error?.message ?? "no analysis for this project");
       return false;
     }
-    analysisId = own.data;
-  } else {
-    const project = await supabase
-      .from("Project")
-      .select("analysisID")
-      .eq("projectID", projectId)
-      .maybeSingle();
-    analysisId = (project.data as { analysisID?: string } | null)?.analysisID;
-    if (project.error || !analysisId) {
-      console.error("Save results error:", project.error?.message ?? "project has no analysis");
-      return false;
-    }
   }
-  const stored: Stored = { version: RESULTS_VERSION, savedAt: new Date().toISOString(), data };
-  // .select() returns the updated rows, so a policy that blocks the update (0 rows) is noticed.
-  const { data: updated, error } = await supabase
-    .from("Analysis")
-    .update(options.renew ? { results: stored, analysisDate: new Date().toISOString() } : { results: stored })
-    .eq("analysisID", analysisId)
-    .select("analysisID");
-  if (error || !updated || updated.length === 0) {
-    console.error("Save results error:", error?.message ?? "no row updated (check the update policy)");
-    return false;
-  }
-
-  // The same indicators as Site_Indicator rows. The results above are what the history opens, so a
-  // failure here is only logged (for example when supabase/site-indicators.sql was not run yet).
-  const rows = await supabase.rpc("save_site_indicators", {
+  // The function replaces the old rows of the analysis, marks it completed, and sets its version
+  // (and its date, when it is renewed). supabase/site-indicators.sql
+  const saved = await supabase.rpc("save_site_indicators", {
     p_project: projectId,
     p_rows: indicatorRows(data),
+    p_version: RESULTS_VERSION,
+    p_renew: options.renew === true,
   });
-  if (rows.error) console.error("Site indicators error:", rows.error.message);
+  if (saved.error) {
+    console.error("Save results error:", saved.error.message);
+    return false;
+  }
   return true;
 }
 
@@ -176,7 +251,6 @@ export async function saveResults(
 export async function saveServices(projectId: string, services: Service[]): Promise<boolean> {
   const { data, error } = await createClient().rpc("add_services", {
     p_project: projectId,
-    p_services: services,
     p_rows: serviceRows(services),
   });
   if (error) console.error("Save services error:", error.message);

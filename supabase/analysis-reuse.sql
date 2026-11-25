@@ -91,7 +91,7 @@ end;
 $$;
 
 
--- 2. The reusable analysis of a plot: finished (its results are saved), the same villa type, area and
+-- 2. The reusable analysis of a plot: finished (its Site_Indicator rows are saved), the same villa type, area and
 --    height (an empty height matches an empty height), and less than 6 months old. The newest one wins.
 create or replace function public.reusable_analysis(
   p_plot       uuid,
@@ -110,7 +110,8 @@ as $$
       and a."villaType" = p_villa_type
       and a."landArea" = p_area
       and a."expectedBuildingHeight" is not distinct from p_height
-      and a.results is not null
+      and a.status = 'completed'
+      and exists (select 1 from public."Site_Indicator" i where i."analysisID" = a."analysisID")
       and a."analysisDate" > now() - interval '6 months'
     order by a."analysisDate" desc
     limit 1;
@@ -183,9 +184,10 @@ begin
     return v_analysis;
   end if;
 
-  -- shared: a new analysis with the same inputs (its results are saved right after)
+  -- shared: a new analysis with the same inputs (its indicators are saved right after)
+  -- (no indicators yet: they are saved right after, and then it becomes "completed")
   insert into public."Analysis" ("plotID", "villaType", "landArea", "expectedBuildingHeight", status, version)
-    select "plotID", "villaType", "landArea", "expectedBuildingHeight", status, version
+    select "plotID", "villaType", "landArea", "expectedBuildingHeight", 'running', version
     from public."Analysis" where "analysisID" = v_analysis
     returning "analysisID" into v_copy;
 
@@ -200,11 +202,12 @@ grant execute on function public.own_analysis(uuid) to authenticated;
 
 -- 5. The nearest services, when they arrive after the analysis was saved (they load on their own).
 --    Only fills them in when they are missing, so it never changes what another user already sees.
---    p_services goes into Analysis.results, p_rows into Site_Indicator (one row per service kind).
+--    p_rows go into Site_Indicator (one distance row and one count row per service kind).
+drop function if exists public.add_services(uuid, jsonb, jsonb);
+
 create or replace function public.add_services(
-  p_project  uuid,
-  p_services jsonb,
-  p_rows     jsonb
+  p_project uuid,
+  p_rows    jsonb
 ) returns boolean
 language plpgsql
 security definer
@@ -225,32 +228,30 @@ begin
     raise exception 'Project not found';
   end if;
 
-  if jsonb_typeof(p_services) is distinct from 'array' or jsonb_typeof(p_rows) is distinct from 'array' then
-    raise exception 'p_services and p_rows must be JSON arrays';
+  if jsonb_typeof(p_rows) is distinct from 'array' then
+    raise exception 'p_rows must be a JSON array';
   end if;
 
-  update public."Analysis"
-    set results = jsonb_set(results, '{data,services}', p_services)
-    where "analysisID" = v_analysis
-      and results is not null
-      and coalesce(jsonb_typeof(results #> '{data,services}'), 'null') = 'null';
-  if not found then
-    return false; -- already there (or no results yet)
+  -- only for a saved analysis that has no services yet
+  if not exists (select 1 from public."Site_Indicator" where "analysisID" = v_analysis)
+     or exists (
+       select 1 from public."Site_Indicator"
+       where "analysisID" = v_analysis and "indicatorName" in ('serviceDistance', 'serviceCount')
+     ) then
+    return false;
   end if;
 
-  delete from public."Site_Indicator"
-    where "analysisID" = v_analysis and "indicatorName" in ('serviceDistance', 'serviceCount');
   insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, value, unit)
     select v_analysis, r."indicatorName", r.facade, r.value, r.unit
     from jsonb_to_recordset(p_rows)
       as r ("indicatorName" text, facade text, value double precision, unit text)
     where r."indicatorName" in ('serviceDistance', 'serviceCount');
-  return true;
+  return found;
 end;
 $$;
 
-revoke all on function public.add_services(uuid, jsonb, jsonb) from public, anon;
-grant execute on function public.add_services(uuid, jsonb, jsonb) to authenticated;
+revoke all on function public.add_services(uuid, jsonb) from public, anon;
+grant execute on function public.add_services(uuid, jsonb) to authenticated;
 
 -- 6. Finding the analyses of a plot quickly.
 create index if not exists "Analysis_reuse_idx"
