@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import { EstimatedMark, EstimatedNote } from "@/components/Estimated";
@@ -12,8 +12,18 @@ import SegmentedControl from "@/components/SegmentedControl";
 import StatusMessage from "@/components/analysis/StatusMessage";
 import { usePlotCopy } from "@/components/analysis/usePlotCopy";
 import type { MapFocus } from "@/components/map/PlotPickerMap";
-import { MAX_BUILDING_HEIGHT, fetchNeighborhood, isResidential, lookupPlot } from "@/lib/analysis";
+import {
+  MAX_BUILDING_HEIGHT,
+  SPLIT_MIN_PART,
+  SPLIT_MIN_PLOT,
+  SPLIT_MIN_STREET,
+  fetchNeighborhood,
+  isResidential,
+  lookupPlot,
+} from "@/lib/analysis";
 import { useT } from "@/lib/i18n";
+import { setAnalysisRequest, takePlotPrefill } from "@/lib/analysis-request";
+import type { VillaType as RequestVillaType } from "@/lib/analysis-request";
 import type { PlotInfo } from "@/lib/analysis";
 import { formatCoordinates, isInsideRiyadh, parseCoordinates } from "@/lib/geo";
 import type { LatLng } from "@/lib/geo";
@@ -34,7 +44,7 @@ const PlotPickerMap = dynamic(() => import("@/components/map/PlotPickerMap"), {
 });
 
 type Mode = "map" | "coords";
-type VillaType = "attachedBoth" | "attachedOne" | "detached";
+type VillaType = RequestVillaType;
 type Message = { tone: "error" | "success"; text: string } | null;
 
 // The land area, with the estimated star when the plot's area is not known (the fixed area of backend/defaults.py).
@@ -71,17 +81,13 @@ function numbersOnly(text: string): string {
   return dot === -1 ? latin : latin.slice(0, dot + 1) + latin.slice(dot + 1).replace(/\./g, "");
 }
 
-// "New analysis" from a result opens this page with the same plot already chosen:
-// /select-plot?lat=..&lng=..&villaType=..
-function initialPlot(params: URLSearchParams): { point: LatLng | null; villaType: VillaType | "" } {
-  const type = params.get("villaType");
-  const villaType = type === "attachedBoth" || type === "attachedOne" || type === "detached" ? type : "";
-  const latText = params.get("lat");
-  const lngText = params.get("lng");
-  if (!latText || !lngText) return { point: null, villaType };
-  const point = { lat: Number(latText), lng: Number(lngText) };
-  const valid = Number.isFinite(point.lat) && Number.isFinite(point.lng) && isInsideRiyadh(point);
-  return { point: valid ? point : null, villaType };
+// "New analysis" from a result opens this page with the same plot already chosen (handed over in memory,
+// not in the link: see lib/analysis-request).
+function initialPlot(): { point: LatLng | null; villaType: VillaType | "" } {
+  const prefill = takePlotPrefill();
+  if (!prefill) return { point: null, villaType: "" };
+  const point = { lat: prefill.lat, lng: prefill.lng };
+  return { point: isInsideRiyadh(point) ? point : null, villaType: prefill.villaType ?? "" };
 }
 
 export default function SelectPlotPage() {
@@ -97,8 +103,7 @@ function SelectPlotContent() {
   const c = usePlotCopy().select;
   const { lang } = useT();
   const router = useRouter();
-  const params = useSearchParams();
-  const [initial] = useState(() => initialPlot(params));
+  const [initial] = useState(() => initialPlot());
   const [mode, setMode] = useState<Mode>("map");
   const [villaType, setVillaType] = useState<VillaType | "">(initial.villaType);
   const [villaTypeError, setVillaTypeError] = useState("");
@@ -189,15 +194,37 @@ function SelectPlotContent() {
 
   // The municipality's limits, checked as the user types: the height cannot pass the allowed maximum,
   // and the area cannot be larger than the plot itself (its area from the parcels layer).
+  // An estimated plot area (not known) allows any area.
   const plotArea = plot?.outline && !plot.areaEstimated ? plot.area : null;
+  // A smaller area than the plot = subdividing it, allowed only when the plot is at least 400 m2 and stands on
+  // a street at least 10 m wide; then each part must be at least 200 m2. Otherwise the field is locked and the
+  // plot is analyzed as a whole.
+  const splitBlock =
+    plotArea === null || !plot
+      ? ""
+      : plotArea < SPLIT_MIN_PLOT
+        ? c.splitPlotSmall
+        : plot.streetWidth === null
+          ? c.splitNoStreet
+          : plot.streetWidth < SPLIT_MIN_STREET
+            ? c.splitStreetNarrow
+            : "";
+  const enteredArea = splitBlock || optionalArea.trim() === "" ? null : Number(optionalArea);
+  const wholePlot = enteredArea !== null && plotArea !== null && Math.abs(enteredArea - plotArea) < 1;
   const heightError =
     expectedHeight !== "" && Number(expectedHeight) > MAX_BUILDING_HEIGHT
       ? c.errHeightMax.replace("{max}", String(MAX_BUILDING_HEIGHT))
       : "";
   const areaError =
-    optionalArea !== "" && plotArea !== null && Number(optionalArea) > plotArea
-      ? c.errAreaMax.replace("{max}", plotArea.toLocaleString())
-      : "";
+    enteredArea === null || plotArea === null || wholePlot
+      ? ""
+      : enteredArea > plotArea
+        ? c.errAreaMax.replace("{max}", plotArea.toLocaleString())
+        : enteredArea < SPLIT_MIN_PART || enteredArea > plotArea - SPLIT_MIN_PART
+          ? c.errSplitRange
+              .replace("{max}", (plotArea - SPLIT_MIN_PART).toLocaleString())
+              .replace("{plot}", plotArea.toLocaleString())
+          : "";
 
   function start() {
     if (!point || !plot || plotProblem || heightError || areaError) return;
@@ -210,7 +237,7 @@ function SelectPlotContent() {
 
 
 
-    const areaText = optionalArea.trim();
+    const areaText = splitBlock ? "" : optionalArea.trim(); // a plot that cannot be subdivided: its whole area
     const heightText = expectedHeight.trim();
 
     const validArea =
@@ -230,18 +257,15 @@ function SelectPlotContent() {
 
     setOptionalError("");
 
-    const query = new URLSearchParams({
-     lat: String(point.lat),
-     lng: String(point.lng),
-     area: String(areaText === "" ? plot.area : Number(areaText)),
-     villaType: villaType,
-   });
-
-    if (heightText !== "") {
-      query.set("height", String(Number(heightText)));
-    }
-
-    router.push(`/analyzing?${query.toString()}`);
+    // handed to the analyzing page in memory, not in the link, so it cannot be changed in the address bar
+    setAnalysisRequest({
+      lat: point.lat,
+      lng: point.lng,
+      area: areaText === "" ? plot.area : Number(areaText),
+      height: heightText === "" ? null : Number(heightText),
+      villaType,
+    });
+    router.push("/analyzing");
   }
 
 
@@ -396,10 +420,13 @@ function SelectPlotContent() {
               dir="ltr"
               inputMode="decimal"
               placeholder="450"
-              value={optionalArea}
+              value={splitBlock ? "" : optionalArea}
               onChange={(e) => setOptionalArea(numbersOnly(e.target.value))}
               error={areaError || undefined}
+              disabled={splitBlock !== ""}
+              className={splitBlock ? "cursor-not-allowed bg-navy-50! text-navy-900/50" : ""}
             />
+            {splitBlock && <p className="-mt-2 text-xs leading-6 text-navy-900/70">{splitBlock}</p>}
 
             <Input
               label={c.expectedHeightLabel}

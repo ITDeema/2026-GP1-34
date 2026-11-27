@@ -3,7 +3,7 @@ import { FACADES, METRICS } from "@/lib/analysis-detail";
 import type { Facade, FacadeIndicators, IndicatorsData, Level, MetricKey } from "@/lib/analysis-detail";
 import { SERVICE_KINDS } from "@/lib/neighbourhood";
 import type { Service, ServiceKind } from "@/lib/neighbourhood";
-import type { FacadeNeighbours, NoiseRoadClass } from "@/lib/site-api";
+import type { FacadeNeighbours, IndicatorEstimate, NoiseRoadClass } from "@/lib/site-api";
 
 // The indicators of a finished analysis are kept ONLY in "Site_Indicator" (one row per indicator, and per
 // facade for the facade indicators), as the ER diagram says. Opening a result from the history rebuilds the
@@ -56,6 +56,7 @@ export function indicatorRows(data: IndicatorsData): IndicatorRow[] {
   if (site.noise) add("noiseLevel", null, NOISE_NUMBER[site.noise], "level (1 low, 2 medium, 3 high)");
   add("noiseDistance", site.noiseReason?.roadClass ?? null, site.noiseReason?.distance, "m"); // facade = road class
   if (data.neighbours) rows.push(...neighbourRows(data.neighbours));
+  rows.push(...estimateRows(data.estimated));
   if (data.services) rows.push(...serviceRows(data.services));
   return rows;
 }
@@ -96,6 +97,24 @@ export function neighbourRows(neighbours: NonNullable<IndicatorsData["neighbours
     }
     for (const [indicatorName, key] of NEIGHBOUR_FLAGS) {
       if (typeof n[key] === "boolean") rows.push({ indicatorName, facade, value: n[key] ? 1 : 0, unit: "flag" });
+    }
+  }
+  return rows;
+}
+
+// What is estimated in the indicators of each wall, as flag rows (value 1); nothing estimated = no row.
+const ESTIMATE_FLAGS = [
+  ["estBuildingHeight", "buildingHeight"],
+  ["estSetbacks", "setbacks"],
+] as const;
+
+export function estimateRows(estimated: IndicatorsData["estimated"]): IndicatorRow[] {
+  const rows: IndicatorRow[] = [];
+  for (const facade of FACADES) {
+    const e = estimated?.[facade];
+    if (!e) continue;
+    for (const [indicatorName, key] of ESTIMATE_FLAGS) {
+      if (e[key]) rows.push({ indicatorName, facade, value: 1, unit: "flag" });
     }
   }
   return rows;
@@ -142,6 +161,7 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
     };
   }
   let hasNeighbours = false;
+  const estimated: Partial<Record<Facade, IndicatorEstimate>> = {};
   const kinds = new Map<ServiceKind, Service>();
   const siteValues = new Map<string, { facade: string | null; value: number }>();
 
@@ -165,6 +185,10 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
     } else if (isFacade(facade) && NEIGHBOUR_FLAGS.some(([rowName]) => rowName === name)) {
       const key = NEIGHBOUR_FLAGS.find(([rowName]) => rowName === name)![1];
       neighbours[facade][key] = value === 1;
+    } else if (isFacade(facade) && ESTIMATE_FLAGS.some(([rowName]) => rowName === name)) {
+      const key = ESTIMATE_FLAGS.find(([rowName]) => rowName === name)![1];
+      const e = (estimated[facade] ??= { buildingHeight: false, setbacks: false });
+      e[key] = value === 1;
     } else if (name === "serviceDistance" || name === "serviceCount") {
       // rows saved before the nearestService column kept the kind in the facade column
       const kind = (row.nearestService ?? facade) as ServiceKind;
@@ -202,6 +226,7 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
       noiseReason: noiseWhy?.facade ? { roadClass: noiseWhy.facade as NoiseRoadClass, distance: noiseWhy.value } : null,
     },
     neighbours: hasNeighbours ? neighbours : null,
+    estimated,
     services: services.length > 0 ? services : null,
   };
 }

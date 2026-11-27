@@ -625,23 +625,43 @@ def real_house(P, gba):
     return (E, idx[site]) if (not E.is_empty and E.area >= MIN_AREA) else (None, idx[site])
 
 
+AREA_TOL = 1.0  # m2: an entered land area within 1 m2 of the plot's area is the plot's own (not changed)
+
+
+def _shrink_to(E, target: float):
+    """The house pulled in by the same distance on every side (its shape kept) until its area is at most
+    target; when that would break it apart, shrunk evenly around its centre instead."""
+    lo, hi = 0.0, 0.5 * np.sqrt(E.area)
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        part = _largest(E.buffer(-mid, join_style="mitre"))
+        lo, hi = (mid, hi) if (not part.is_empty and part.area > target) else (lo, mid)
+    out = _largest(E.buffer(-hi, join_style="mitre"))
+    if out.is_empty or out.area < 0.5 * target:
+        out = shapely.affinity.scale(E, *(2 * [float(np.sqrt(target / E.area))]), origin="centroid")
+    return out
+
+
 def house_of(P, sides, streets, gba, height: float | None = None, land_area: float | None = None):
     """The building and the GBA indices that are not neighbours.
-    Notebook (no user input): the GBA house, else the envelope at 14 m.
-    Website (height / area entered): the envelope with the user's height and land area; the building that
-    stands on the plot now is replaced, so it is not a neighbour either."""
+    A built plot (a GBA house on it): the house as it stands. The user's height replaces its GBA height (else
+    the GBA height); a land area the user changed keeps its shape but pulls its walls in until it covers at most
+    75 % of that area (a house already within 75 % stays as it is).
+    A vacant plot: the envelope (setbacks, 75 % of the land area) at the user's height, else 14 m.
+    Without user input this is the notebook (the GBA house, else the envelope at 14 m)."""
     G, H, tree = gba
     E0, site_idx = real_house(P, gba)
-    if height or land_area:
-        E = envelope(P, sides, streets, land_area)
-        inside = tree.query(E, predicate="intersects")
-        return E, float(height or VACANT_H), np.union1d(site_idx, inside), "user_design"
     if E0 is not None:
         h = H[site_idx]
         h = h[np.isfinite(h) & (h > 0)]
-        return E0, float(h.max()) if len(h) else VACANT_H, site_idx, "measured_footprint"
-    E = envelope(P, sides, streets)
-    return E, VACANT_H, np.union1d(site_idx, tree.query(E, predicate="intersects")), "regulation_envelope"
+        Hb = float(height) if height else (float(h.max()) if len(h) else VACANT_H)
+        E = E0
+        if land_area and abs(land_area - P.area) > AREA_TOL and E.area > COVER_MAX * land_area:
+            E = _shrink_to(E, COVER_MAX * land_area)
+        return E, Hb, site_idx, "measured_footprint"
+    E = envelope(P, sides, streets, land_area)
+    return E, float(height or VACANT_H), np.union1d(site_idx, tree.query(E, predicate="intersects")), \
+        "regulation_envelope"
 
 
 # ------------------------------------------------------------------ wall points, horizon, sky view
@@ -763,7 +783,40 @@ def wind_block(B, nz, G, Fk):
     return np.divide((W * B).sum(1), den, out=np.full(len(nz), np.nan), where=den > 0)
 
 
-def wall_lengths(E, axis: float) -> dict:
+def plot_facades(P):
+    """The plot's four façades as the page shows them (mainFacades in the frontend): the four directions
+    (dir8 of each side's outward normal) with the longest sides, each with the mean normal of its sides.
+    The page measures from true north and these metres are UTM: the grid is turned by the meridian convergence
+    (about 0.7° in Riyadh), added here so that a side near the border of two directions falls as on the page."""
+    from pyproj import Transformer
+
+    lon, lat = Transformer.from_crs(METRIC_SR, 4326, always_xy=True).transform(P.centroid.x, P.centroid.y)
+    gamma = (lon - 45.0) * np.sin(np.radians(lat))  # UTM zone 38N: central meridian 45° E
+    ring = np.asarray(orient(P, 1.0).exterior.coords)
+    length, vec = {}, {}
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+        dx, dy = x2 - x1, y2 - y1
+        L = float(np.hypot(dx, dy))
+        if L < 0.5:
+            continue
+        nx, ny = dy / L, -dx / L
+        d = dir8(float(np.degrees(np.arctan2(nx, ny)) + gamma) % 360)
+        length[d] = length.get(d, 0.0) + L
+        vx, vy = vec.get(d, (0.0, 0.0))
+        vec[d] = (vx + nx * L, vy + ny * L)
+    top = sorted(length, key=length.get, reverse=True)[:4]
+    return np.array([np.degrees(np.arctan2(*vec[d])) % 360 for d in top]), np.array(top, dtype=object)
+
+
+def facade_of(nz, facades) -> np.ndarray:
+    """Each wall's façade: the plot façade whose direction is closest to the wall's (so the walls of a house
+    drawn a little turned from its plot still belong to the façades the page shows)."""
+    normals, names = facades
+    nz = np.atleast_1d(np.asarray(nz, dtype=float))
+    return names[np.argmin(adiff(nz[:, None], normals[None, :]), axis=1)]
+
+
+def wall_lengths(E, axis: float, facades=None) -> dict:
     """Notebook (noise cell) facade_length: the length of the house walls facing each direction (m)."""
     ring = np.asarray(orient(E, 1.0).exterior.coords)
     out: dict[str, float] = {}
@@ -772,7 +825,8 @@ def wall_lengths(E, axis: float) -> dict:
         L = float(np.hypot(dx, dy))
         if L < 1.0:
             continue
-        d = wall_dir([np.degrees(np.arctan2(dy / L, -dx / L)) % 360], axis)[0]
+        a = np.degrees(np.arctan2(dy / L, -dx / L)) % 360
+        d = facade_of(a, facades)[0] if facades is not None else wall_dir([a], axis)[0]
         out[d] = out.get(d, 0.0) + L
     return out
 
@@ -792,11 +846,14 @@ def indicators_for(P, streets, height: float | None = None, land_area: float | N
     rw, _ = radiation(B, nz, svf / 2, S["Winter"])
     axis = house_axis(E)
     snap = snapped_az(nz, axis)
-    dirs = np.array([dir8(a) for a in snap])
+    # the façade of each wall point: the plot's façade it faces (as the page shows them), not the house's own
+    # axis, so that a GBA house turned a little from its plot keeps the same four façades as the plot
+    facades = plot_facades(P1)
+    dirs = facade_of(nz, facades)
     G = wall_G(nz, E)
     wg = wind_block(B, nz, G, ep["wind"]["good"])
     wb = wind_block(B, nz, G, ep["wind"]["bad"])
-    lengths = wall_lengths(E, axis)
+    lengths = wall_lengths(E, axis, facades)
 
     def mean(v):
         v = v[np.isfinite(v)]
@@ -818,7 +875,11 @@ def indicators_for(P, streets, height: float | None = None, land_area: float | N
             "Wind_block_bad": mean(wb[m]),
             "facade_length": lengths.get(d, np.nan),
         }
+    # estimated data: our own height when the user did not enter one and GBA has none (or the plot is vacant): 14 m
+    own_h = gba[1][site_idx]
+    height_est = not height and (source == "regulation_envelope" or not np.any(np.isfinite(own_h) & (own_h > 0)))
     return {"by_dir": out, "building": E, "building_height": Hb, "building_source": source,
+            "est_height": bool(height_est),
             "days": {k: v["days"] for k, v in S.items()}}
 
 
@@ -1017,27 +1078,97 @@ def street_distance(parcel, d: str, streets, reach: float = NEIGHBOUR_RADIUS) ->
     return best
 
 
-def front_building(parcel, d: str, buildings, reach: float = NEIGHBOUR_RADIUS) -> tuple[float, float]:
-    """The nearest building straight in front of the sides of the plot facing d: (m from the side, height),
-    (NaN, NaN) when there is none within `reach` m. Any part of a GBA shape inside the plot is cut off first:
-    GBA often draws attached houses as one block that covers our plot too, and the part outside it is the
-    neighbour (0 m for a shared wall). The dataset's compute_fixed drops such a block as our own house."""
+# GBA footprints (satellite) and the parcels (municipality) are drawn from different sources and are often
+# 0.5-1.5 m apart: our own house sticks out of the plot as a thin strip (that the card showed as a neighbour at
+# 0 m with our own height), and a neighbour sticks into it. Only solid parts outside the plot are neighbours.
+SLIVER_M = 1.0      # m: a part of a building outside the plot thinner than 2 x 1 m is a drawing offset
+OWN_SLIVER_M = 2.0  # m: around our own house, what is left outside the plot must be at least 4 m deep
+OWN_SHARE = 0.3     # a footprint with at least 30 % of its area inside the plot is our own house
+
+
+def _solid(parts, t: float):
+    """The parts without anything thinner than 2*t: shrunk by t and grown back (square corners kept),
+    then clipped to the parts themselves so that growing back never adds area."""
+    opened = shapely.buffer(shapely.buffer(parts, -t, join_style="mitre"), t, join_style="mitre")
+    return shapely.intersection(opened, parts)
+
+
+def _neighbour_parts(parcel, geoms):
+    """The GBA footprints without the plot, without the thin strips left by the drawing offset. Around our own
+    house only a part at least 4 m deep is kept: a house attached to ours that GBA drew as the same block."""
+    inside = shapely.area(shapely.intersection(geoms, parcel))
+    own = inside >= OWN_SHARE * shapely.area(geoms)
+    outside = shapely.difference(geoms, parcel)
+    return np.where(own, _solid(outside, OWN_SLIVER_M), _solid(outside, SLIVER_M))
+
+
+MAIN_EXTRA_M = 30.0  # m: the neighbour's house is looked for at most 30 m behind the nearest building
+
+
+def _main_building(parcel, near, near_d, near_h, seg, corridor, buildings, around):
+    """The neighbour's house: on the plot of the nearest building in front, the tallest building (then the
+    largest) that is also straight in front of the side and at most 30 m behind the nearest one, so that an
+    annex or a car shade by the wall is not taken as the house. Never lower than the nearest building.
+    (m from the side, height), or None when that plot is not known (no parcels, or not on a plot)."""
+    if around is None or not len(around[0]):
+        return None
+    ap_g = around[0]
+    hit = np.nonzero(shapely.contains(ap_g, shapely.point_on_surface(near)))[0]
+    if not len(hit):
+        return None
+    nb = ap_g[hit[np.argmin(shapely.area(ap_g[hit]))]]  # the smallest plot that holds it
+    if shapely.area(shapely.intersection(nb, parcel)) > 0.5 * nb.area:
+        return None  # our own plot
     g_all, h_all, _, tree = buildings
-    best_d, best_h = np.nan, np.nan
+    idx = tree.query(nb, predicate="intersects")
+    idx = idx[h_all[idx] > 0]
+    if not len(idx):
+        return None
+    g = g_all[idx]
+    mine = shapely.area(shapely.intersection(g, parcel)) >= OWN_SHARE * shapely.area(g)
+    part = shapely.intersection(shapely.difference(g, parcel), corridor)
+    dist = shapely.distance(part, seg)
+    keep = (shapely.contains(nb, shapely.point_on_surface(g)) & ~mine & (shapely.area(part) >= 1.0)
+            & (dist <= near_d + MAIN_EXTRA_M))
+    if not keep.any():
+        return None
+    k = np.nonzero(keep)[0]
+    j = k[np.lexsort((-shapely.area(g[k]), -h_all[idx[k]]))[0]]  # tallest, then largest
+    if h_all[idx[j]] <= near_h:
+        return None  # the nearest building is as tall as any: it is the house
+    return float(dist[j]), float(h_all[idx[j]])
+
+
+def front_building(parcel, d: str, buildings, around=None, reach: float = NEIGHBOUR_RADIUS) -> tuple[float, float]:
+    """The neighbour's house straight in front of the sides of the plot facing d: (m from the side, height),
+    (NaN, NaN) when there is no building within `reach` m. The footprints are cut by the plot first and their
+    thin strips dropped (_neighbour_parts): GBA often draws attached houses as one block that covers our plot
+    too, and the solid part outside it is the neighbour (0 m for a shared wall). The nearest building found,
+    the card shows the main building of its plot (_main_building, with `around` = the parcels around), else
+    the nearest building itself."""
+    g_all, h_all, _, tree = buildings
+    best = None
     for a, b, nx, ny in _sides(parcel, d):
         seg = LineString([a, b])
         corridor = _corridor(a, b, nx, ny, reach)
         idx = tree.query(corridor, predicate="intersects")
+        idx = idx[h_all[idx] > 0]
         if not len(idx):
             continue
-        part = shapely.intersection(shapely.difference(g_all[idx], parcel), corridor)
-        ok = (shapely.area(part) >= 1.0) & (h_all[idx] > 0)  # under 1 m2 = drawing leftovers, not a building
+        part = shapely.intersection(_neighbour_parts(parcel, g_all[idx]), corridor)
+        ok = shapely.area(part) >= 1.0  # under 1 m2 = drawing leftovers, not a building
         if ok.any():
             dist = shapely.distance(part[ok], seg)
             k = int(np.argmin(dist))
-            if np.isnan(best_d) or dist[k] < best_d:
-                best_d, best_h = round(float(dist[k]), 2), round(float(h_all[idx][ok][k]), 1)
-    return best_d, best_h
+            if best is None or dist[k] < best[0]:
+                best = (float(dist[k]), float(h_all[idx][ok][k]), part[ok][k], seg, corridor)
+    if best is None:
+        return np.nan, np.nan
+    dist, height, near, seg, corridor = best
+    main = _main_building(parcel, near, dist, height, seg, corridor, buildings, around)
+    if main is not None:
+        dist, height = main
+    return round(dist, 2), round(height, 1)
 
 
 def street_index(st: pd.DataFrame):
@@ -1075,18 +1206,22 @@ def facade_indicators(lat: float, lon: float, height: float | None = None, area:
     st = street_table(features)
     row = facades_for(parcel, st)
     arrays = street_arrays(features)
+    try:
+        around = fetch_parcels_around(parcel)
+    except SOURCE_ERRORS:  # neither ArcGIS nor the parcels file answered: the use is not known
+        around = None
     ind = indicators_for(parcel, arrays, height=height, land_area=area)
     days = ind["days"]
-    # the neighbours card: from each side of the plot, straight in front of it (unchanged)
+    # the neighbours card: from each side of the plot, straight in front of it
     buildings = gba_buildings()
     streets = street_index(st)
     street_d = {d: street_distance(parcel, d, streets) for d in DIRS}
-    # the nearest building straight in front of each side (a shared wall = 0 m)
-    front = {d: front_building(parcel, d, buildings) for d in DIRS}
+    # the neighbour's house straight in front of each side (a shared wall = 0 m)
+    front = {d: front_building(parcel, d, buildings, around) for d in DIRS}
     adjoining = [h for _, h in front.values() if not np.isnan(h)]
-    try:
-        uses = land_use_level1(parcel, *fetch_parcels_around(parcel))
-    except SOURCE_ERRORS:  # neither ArcGIS nor the parcels file answered: the use is not known
+    if around is not None:
+        uses = land_use_level1(parcel, *around)
+    else:
         uses = {}
         for d in DIRS:
             has_side = bool(_sides(parcel, d))
@@ -1136,6 +1271,17 @@ def facade_indicators(lat: float, lon: float, height: float | None = None, area:
             },
         }
     main_dir, main_est = main_facade(parcel, row, arrays)
+    # estimated data in the indicators of each wall (the page marks them):
+    #   buildingHeight: the user entered no height and GBA has none for the house (or the plot is vacant): 14 m
+    #   setbacks: a vacant plot's building is drawn from the setbacks, and a street width or the main façade
+    #             is estimated
+    setbacks_est = ind["building_source"] == "regulation_envelope" and (
+        main_est or any(f["neighbours"]["streetWidthEstimated"] for f in facades.values()))
+    for d in DIRS:
+        facades[d]["indicatorsEstimated"] = {
+            "buildingHeight": ind["est_height"],
+            "setbacks": bool(setbacks_est),
+        }
     return {
         "mainFacade": main_dir,
         "mainFacadeEstimated": main_est,

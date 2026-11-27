@@ -3,6 +3,7 @@
 import Badge from "@/components/Badge";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
+import { EstimatedMark, EstimatedNote } from "@/components/Estimated";
 import LevelMeter from "@/components/analysis/LevelMeter";
 import { NoiseGauge } from "@/components/analysis/SiteGauges";
 import StatusMessage from "@/components/analysis/StatusMessage";
@@ -45,6 +46,10 @@ export default function IndicatorsPanel({ state, facade, role, onRetry }: Indica
   const c = useResultsCopy();
   const levelText = useLevelText();
   const detailed = role === "architect";
+  // what is estimated in this wall's indicators (a star on its values and a note under them); null = nothing
+  const reasons = state.status === "ready" ? state.data.estimated?.[facade] : null;
+  const estimated =
+    reasons && (reasons.buildingHeight || reasons.setbacks) ? reasons : null;
 
   return (
     <Card>
@@ -102,7 +107,10 @@ export default function IndicatorsPanel({ state, facade, role, onRetry }: Indica
                     <dt className="text-navy-900/80">{c.indicators.metrics[metric]}</dt>
                     <dd className="font-semibold">
                       {detailed ? (
-                        <bdi>{formatMetric(metric, value)}</bdi>
+                        <>
+                          <bdi>{formatMetric(metric, value)}</bdi>
+                          {estimated && <EstimatedMark />}
+                        </>
                       ) : (
                         metric === "radiation" || metric === "sky" ? (
                           <span className={`inline-block rounded-pill px-3 py-1 text-xs font-semibold ${metric === "sky" ? SKY_BADGE[level] : RADIATION_BADGE[level]}`}>
@@ -112,6 +120,7 @@ export default function IndicatorsPanel({ state, facade, role, onRetry }: Indica
                           <Badge tone={toneOf(metric, level)}>{levelText(metric, level)}</Badge>
                         )
                       )}
+                      {!detailed && estimated && <EstimatedMark />}
                     </dd>
                   </div>
                    {detailed ? (
@@ -141,6 +150,14 @@ export default function IndicatorsPanel({ state, facade, role, onRetry }: Indica
               );
             })}
           </dl>
+          {estimated && (
+            <EstimatedNote
+              label={`${c.indicators.estimated.title}: ${(["buildingHeight", "setbacks"] as const)
+                .filter((key) => estimated[key])
+                .map((key) => c.indicators.estimated[key])
+                .join(" ")}`}
+            />
+          )}
         </>
       )}
     </Card>
@@ -192,4 +209,3 @@ export function SiteIndicatorsCard({ site }: { site: SiteIndicators }) {
     </Card>
   );
 }
-

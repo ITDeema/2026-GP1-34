@@ -67,6 +67,11 @@ const ar = {
     retry: "إعادة المحاولة",
     sample: "بيانات تجريبية",
     noWall: "لا توجد واجهة بهذا الاتجاه",
+    estimated: {
+      title: "بيانات تقديرية",
+      buildingHeight: "ارتفاع المبنى غير مدخل، فاعتُبر 14 م.",
+      setbacks: "شكل المبنى مقدَّر من ارتدادات تعتمد على بيانات شارع تقديرية.",
+    },
     windLevels: {
       low: "مكشوف للرياح والغبار",
       medium: "حماية متوسطة",
@@ -345,6 +350,11 @@ const en: ResultsCopy = {
     retry: "Try again",
     sample: "Sample data",
     noWall: "No wall faces this direction",
+    estimated: {
+      title: "Estimated data",
+      buildingHeight: "No building height was entered, so 14 m is used.",
+      setbacks: "The building's shape is estimated from setbacks that rest on estimated street data.",
+    },
     windLevels: {
       low: "Exposed to wind and dust",
       medium: "Partly protected",

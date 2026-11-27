@@ -99,7 +99,15 @@ export type PlotInfo = {
   orientation: Direction8 | null; // the main facade; null when the plot was not found
   orientationEstimated: boolean; // true = no street runs along the plot (nearest street in front, or longest edge)
   landUse: string | null; // the plot's use in the Riyadh parcels layer (ParcelSub), e.g. "سكني"; null when unknown
+  streetWidth: number | null; // m, the widest street along the plot; null when none runs along it or no plot
 };
+
+// Subdividing a plot (the user enters a smaller land area), the municipality's conditions:
+// the plot before subdividing at least 400 m2, each part after it at least 200 m2,
+// and the street the plot stands on at least 10 m wide.
+export const SPLIT_MIN_PLOT = 400; // m2
+export const SPLIT_MIN_PART = 200; // m2
+export const SPLIT_MIN_STREET = 10; // m
 
 // The highest building the municipality allows for a villa (m), and the height used when none is entered.
 // The backend uses the same value (facade_indicators_api.H_DESIGN).
@@ -247,16 +255,18 @@ async function loadPlot(point: LatLng): Promise<PlotInfo> {
 
   let orientation: Direction8 | null = null;
   let orientationEstimated = false;
+  let streetWidth: number | null = null;
   if (parcel?.outline) {
     const streets = await streetsForPlot(point, parcel.outline, nearbyStreets);
-    const { main, estimated } = findFacades(parcel.outline, streets ?? []);
-    orientation = main ? FACADE_DIRECTION[main] : null;
-    orientationEstimated = estimated;
+    const found = findFacades(parcel.outline, streets ?? []);
+    orientation = found.main ? FACADE_DIRECTION[found.main] : null;
+    orientationEstimated = found.estimated;
+    streetWidth = found.streetWidth;
   }
 
   return {
     width, depth, area, areaEstimated, outline: parcel?.outline ?? null,
-    orientation, orientationEstimated, landUse: parcel?.landUse ?? null,
+    orientation, orientationEstimated, landUse: parcel?.landUse ?? null, streetWidth,
   };
 }
 

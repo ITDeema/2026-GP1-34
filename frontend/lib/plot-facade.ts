@@ -204,6 +204,9 @@ export type FacadeResult = {
   facades: Facade[]; // every direction with a street, in N → NW order
   main: Facade | null; // the facade on the widest street; else the nearest street in front; else the longest edge
   estimated: boolean; // true = no street runs along the plot (the nearest street in front, or the longest edge)
+  // m, the widest street along the plot (a street without a width in the layer: the width of its type);
+  // null when no street runs along the plot
+  streetWidth: number | null;
 };
 
 // A point on the polyline nearest to p.
@@ -311,12 +314,15 @@ export function findFacades(outline: LatLng[], features: StreetFeature[]): Facad
     if (!top || cur.width > top.width || (cur.width === top.width && cur.len > top.len)) main = d;
   }
   const estimated = !main && edges.length > 0;
+  // the widest street along the plot, for the subdivision rule (a street with no width: its type's width)
+  const widths = edges.filter((e) => e.street && !e.chamfer).map((e) => e.street!.detectWidth);
+  const streetWidth = widths.length ? Math.max(...widths) : null;
   if (!main && edges.length) {
     const front = nearestFrontStreet(edges, streets);
     const longest = edges.reduce((a, b) => (b.len > a.len ? b : a));
     main = DIRS8[sector(front ?? longest.normal)];
   }
-  return { facades, main, estimated };
+  return { facades, main, estimated, streetWidth };
 }
 
 /* ---------- edges for drawing ---------- */

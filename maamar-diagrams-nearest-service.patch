@@ -1,0 +1,624 @@
+diff --git a/frontend/lib/analysis-store.ts b/frontend/lib/analysis-store.ts
+index 4f1b506..b765fbe 100644
+--- a/frontend/lib/analysis-store.ts
++++ b/frontend/lib/analysis-store.ts
+@@ -18,6 +18,7 @@ export const RESULTS_VERSION = "v4";
+ export type IndicatorRow = {
+   indicatorName: string;
+   facade: string | null;
++  nearestService?: string | null; // only the nearest-services rows: the service kind (mosque, hospital...)
+   value: number;
+   unit: string;
+ };
+@@ -100,20 +101,26 @@ export function neighbourRows(neighbours: NonNullable<IndicatorsData["neighbours
+   return rows;
+ }
+ 
+-// The nearest services as Site_Indicator rows: for each kind (in the facade column) the distance to the
++// The nearest services as Site_Indicator rows: for each kind (in the nearestService column) the distance to the
+ // nearest one and how many there are. No distance row when there is none of that kind nearby.
+ export function serviceRows(services: Service[]): IndicatorRow[] {
+   const rows: IndicatorRow[] = [];
+   for (const service of services) {
+     if (typeof service.distance === "number" && Number.isFinite(service.distance)) {
+-      rows.push({ indicatorName: "serviceDistance", facade: service.kind, value: service.distance, unit: "m" });
++      rows.push({ indicatorName: "serviceDistance", facade: null, nearestService: service.kind, value: service.distance, unit: "m" });
+     }
+-    rows.push({ indicatorName: "serviceCount", facade: service.kind, value: service.count, unit: "count" });
++    rows.push({ indicatorName: "serviceCount", facade: null, nearestService: service.kind, value: service.count, unit: "count" });
+   }
+   return rows;
+ }
+ 
+-type SavedRow = { indicatorName: string; facade: string | null; value: number | string; unit: string | null };
++type SavedRow = {
++  indicatorName: string;
++  facade: string | null;
++  nearestService?: string | null;
++  value: number | string;
++  unit: string | null;
++};
+ type SavedAnalysis = { status?: string; version?: string; Site_Indicator?: SavedRow[] | null };
+ 
+ const isFacade = (value: string | null): value is Facade => FACADES.includes(value as Facade);
+@@ -159,7 +166,8 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
+       const key = NEIGHBOUR_FLAGS.find(([rowName]) => rowName === name)![1];
+       neighbours[facade][key] = value === 1;
+     } else if (name === "serviceDistance" || name === "serviceCount") {
+-      const kind = facade as ServiceKind;
++      // rows saved before the nearestService column kept the kind in the facade column
++      const kind = (row.nearestService ?? facade) as ServiceKind;
+       const service = kinds.get(kind) ?? { kind, distance: null, count: 0 };
+       if (name === "serviceDistance") service.distance = value;
+       else service.count = value;
+@@ -203,7 +211,7 @@ export function dataFromRows(analysis: SavedAnalysis | null | undefined): Indica
+ export async function loadSavedResults(projectId: string): Promise<IndicatorsData | null> {
+   const { data, error } = await createClient()
+     .from("Project")
+-    .select("Analysis(status, version, Site_Indicator(indicatorName, facade, value, unit))")
++    .select("Analysis(status, version, Site_Indicator(indicatorName, facade, nearestService, value, unit))")
+     .eq("projectID", projectId)
+     .maybeSingle();
+   if (error) {
+diff --git a/frontend/lib/surroundings-store.ts b/frontend/lib/surroundings-store.ts
+index e30164f..de0dcc1 100644
+--- a/frontend/lib/surroundings-store.ts
++++ b/frontend/lib/surroundings-store.ts
+@@ -1,7 +1,7 @@
+ import { createClient } from "@/lib/supabase/client";
+ import type { Surroundings } from "@/lib/site-surroundings";
+ 
+-// The architect's diagrams (land use and roads) are saved per plot in "Plot_Surroundings" and reused for
++// The architect's diagrams (land use and roads) are saved per plot in "Analytical_diagrams" and reused for
+ // 6 months by every architect who analyses the same plot (see supabase/plot-surroundings.sql).
+ // The sun and wind diagram is not saved: it is the same for all of Riyadh.
+ 
+diff --git a/supabase/analysis-reuse.sql b/supabase/analysis-reuse.sql
+index 0057796..48bb275 100644
+--- a/supabase/analysis-reuse.sql
++++ b/supabase/analysis-reuse.sql
+@@ -202,7 +202,7 @@ grant execute on function public.own_analysis(uuid) to authenticated;
+ 
+ -- 5. The nearest services, when they arrive after the analysis was saved (they load on their own).
+ --    Only fills them in when they are missing, so it never changes what another user already sees.
+---    p_rows go into Site_Indicator (one distance row and one count row per service kind).
++--    p_rows go into Site_Indicator (one distance row and one count row per service kind; the kind is in "nearestService").
+ drop function if exists public.add_services(uuid, jsonb, jsonb);
+ 
+ create or replace function public.add_services(
+@@ -241,10 +241,10 @@ begin
+     return false;
+   end if;
+ 
+-  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, value, unit)
+-    select v_analysis, r."indicatorName", r.facade, r.value, r.unit
++  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
++    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
+     from jsonb_to_recordset(p_rows)
+-      as r ("indicatorName" text, facade text, value double precision, unit text)
++      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
+     where r."indicatorName" in ('serviceDistance', 'serviceCount');
+   return found;
+ end;
+diff --git a/supabase/maamar_database.sql b/supabase/maamar_database.sql
+index f84666e..fef6ea2 100644
+--- a/supabase/maamar_database.sql
++++ b/supabase/maamar_database.sql
+@@ -90,6 +90,7 @@ create table if not exists public."Site_Indicator" (
+   "analysisID"    uuid not null references public."Analysis" ("analysisID") on update cascade on delete cascade,
+   "indicatorName" text not null,
+   facade          text,
++  "nearestService" text,   -- the kind of service (mosque, hospital...) of the serviceDistance / serviceCount rows
+   value           double precision,
+   unit            text
+ );
+diff --git a/supabase/plot-surroundings.sql b/supabase/plot-surroundings.sql
+index 54b733a..ef1475b 100644
+--- a/supabase/plot-surroundings.sql
++++ b/supabase/plot-surroundings.sql
+@@ -1,4 +1,4 @@
+--- The data of the analytical diagrams (land use and roads), saved per plot in "Plot_Surroundings".
++-- The data of the analytical diagrams (land use and roads), saved per plot in "Analytical_diagrams".
+ -- The sun and wind diagram is not saved: it is the same for all of Riyadh.
+ -- Run it once in Supabase -> SQL Editor, AFTER analysis-reuse.sql. Safe to run twice; nothing is deleted.
+ --
+@@ -12,31 +12,56 @@
+ --     analysis); when it has none, the newest ones. "Update this project" makes it new again, and then it
+ --     takes surroundings less than 6 months old (or fetches them).
+ 
+--- 1. The table (Plot 1 —— 0..* Plot_Surroundings)
+-create table if not exists public."Plot_Surroundings" (
+-  "surroundingsID" uuid primary key default gen_random_uuid(),
++-- 0. The table used to be called "Plot_Surroundings" (key "surroundingsID"). If it still has the old names,
++--    they are renamed here; if it already has the new ones, nothing happens. No data is touched.
++do $$
++begin
++  if to_regclass('public."Plot_Surroundings"') is not null
++     and to_regclass('public."Analytical_diagrams"') is null then
++    alter table public."Plot_Surroundings" rename to "Analytical_diagrams";
++  end if;
++  if exists (select 1 from information_schema.columns
++             where table_schema = 'public' and table_name = 'Analytical_diagrams' and column_name = 'surroundingsID') then
++    alter table public."Analytical_diagrams" rename column "surroundingsID" to "diagramID";
++  end if;
++  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_pkey'
++             and conrelid = to_regclass('public."Analytical_diagrams"')) then
++    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_pkey" to "Analytical_diagrams_pkey";
++  end if;
++  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_plotID_fkey'
++             and conrelid = to_regclass('public."Analytical_diagrams"')) then
++    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_plotID_fkey" to "Analytical_diagrams_plotID_fkey";
++  end if;
++  if to_regclass('public."Plot_Surroundings_plot_idx"') is not null then
++    alter index public."Plot_Surroundings_plot_idx" rename to "Analytical_diagrams_plot_idx";
++  end if;
++end $$;
++
++-- 1. The table (Plot 1 —— 0..* Analytical_diagrams)
++create table if not exists public."Analytical_diagrams" (
++  "diagramID" uuid primary key default gen_random_uuid(),
+   "plotID"         uuid not null references public."Plot" ("plotID") on delete cascade,
+   "landUseData"    jsonb not null,
+   "roadsData"      jsonb not null,
+   "fetchedAt"      timestamptz not null default now()
+ );
+ 
+-alter table public."Plot_Surroundings" drop column if exists radius;
+-alter table public."Plot_Surroundings" drop column if exists source;
++alter table public."Analytical_diagrams" drop column if exists radius;
++alter table public."Analytical_diagrams" drop column if exists source;
+ 
+-create index if not exists "Plot_Surroundings_plot_idx"
+-  on public."Plot_Surroundings" ("plotID", "fetchedAt" desc);
++create index if not exists "Analytical_diagrams_plot_idx"
++  on public."Analytical_diagrams" ("plotID", "fetchedAt" desc);
+ 
+-alter table public."Plot_Surroundings" enable row level security;
++alter table public."Analytical_diagrams" enable row level security;
+ 
+ -- the user reads the surroundings of the plots in their own projects (writing is only through save_surroundings)
+-drop policy if exists "Users can view surroundings of their plots" on public."Plot_Surroundings";
+-create policy "Users can view surroundings of their plots" on public."Plot_Surroundings"
++drop policy if exists "Users can view surroundings of their plots" on public."Analytical_diagrams";
++create policy "Users can view surroundings of their plots" on public."Analytical_diagrams"
+   for select to authenticated
+   using (exists (
+     select 1 from public."Analysis" a
+     join public."Project" p on p."analysisID" = a."analysisID"
+-    where a."plotID" = "Plot_Surroundings"."plotID"
++    where a."plotID" = "Analytical_diagrams"."plotID"
+       and p."userID" = (select auth.uid())
+   ));
+ 
+@@ -53,7 +78,7 @@ declare
+   v_user uuid := auth.uid();
+   v_plot uuid;
+   v_date timestamptz;
+-  v_row  public."Plot_Surroundings";
++  v_row  public."Analytical_diagrams";
+ begin
+   if v_user is null then
+     raise exception 'Not signed in' using errcode = '28000';
+@@ -68,22 +93,22 @@ begin
+   end if;
+   if v_date > now() - interval '6 months' then
+     -- a recent analysis: surroundings less than 6 months old
+-    select * into v_row from public."Plot_Surroundings"
++    select * into v_row from public."Analytical_diagrams"
+       where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
+       order by "fetchedAt" desc limit 1;
+   else
+     -- an analysis older than 6 months: the surroundings of its own time, otherwise the newest ones
+-    select * into v_row from public."Plot_Surroundings"
++    select * into v_row from public."Analytical_diagrams"
+       where "plotID" = v_plot and "fetchedAt" <= v_date + interval '6 months'
+       order by "fetchedAt" desc limit 1;
+-    if v_row."surroundingsID" is null then
+-      select * into v_row from public."Plot_Surroundings"
++    if v_row."diagramID" is null then
++      select * into v_row from public."Analytical_diagrams"
+         where "plotID" = v_plot
+         order by "fetchedAt" desc limit 1;
+     end if;
+   end if;
+ 
+-  if v_row."surroundingsID" is null then
++  if v_row."diagramID" is null then
+     return null;
+   end if;
+   return jsonb_build_object(
+@@ -133,13 +158,13 @@ begin
+   perform pg_advisory_xact_lock(hashtext(v_plot::text));
+ 
+   if exists (
+-    select 1 from public."Plot_Surroundings"
++    select 1 from public."Analytical_diagrams"
+     where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
+   ) then
+     return false; -- already saved (by this or another user)
+   end if;
+ 
+-  insert into public."Plot_Surroundings" ("plotID", "landUseData", "roadsData")
++  insert into public."Analytical_diagrams" ("plotID", "landUseData", "roadsData")
+     values (v_plot, p_land_use, p_roads);
+   return true;
+ end;
+@@ -161,7 +186,7 @@ as $$
+   select auth.uid() is not null and p_boundary is not null and exists (
+     select 1
+     from public."Plot" pl
+-    join public."Plot_Surroundings" s on s."plotID" = pl."plotID"
++    join public."Analytical_diagrams" s on s."plotID" = pl."plotID"
+     where pl."boundaryKey" = md5(p_boundary::text)
+       and s."fetchedAt" > now() - interval '6 months'
+   );
+diff --git a/supabase/site-indicators.sql b/supabase/site-indicators.sql
+index 2b30cbc..9c316e6 100644
+--- a/supabase/site-indicators.sql
++++ b/supabase/site-indicators.sql
+@@ -1,5 +1,5 @@
+ -- Saves and reads the indicators of an analysis as rows in "Site_Indicator" (one row per indicator, and per
+--- facade for the facade indicators), as the ER diagram says. These rows are the ONLY place the results are kept:
++-- facade for the facade indicators; the nearest-services rows keep their service kind in "nearestService"), as the ER diagram says. These rows are the ONLY place the results are kept:
+ -- opening a result from the history rebuilds the dashboard from them (Analysis.results is no longer used).
+ -- Run it once in Supabase -> SQL Editor, AFTER maamar_database.sql. Safe to run twice; nothing is deleted
+ -- except the old rows of an analysis when it is saved again.
+@@ -61,10 +61,10 @@ begin
+ 
+   delete from public."Site_Indicator" where "analysisID" = v_analysis;
+ 
+-  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, value, unit)
+-    select v_analysis, r."indicatorName", r.facade, r.value, r.unit
++  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
++    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
+     from jsonb_to_recordset(p_rows)
+-      as r ("indicatorName" text, facade text, value double precision, unit text)
++      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
+     where r."indicatorName" is not null;
+   get diagnostics v_count = row_count;
+ 
+diff --git a/supabase/update-diagrams-and-nearest-service.sql b/supabase/update-diagrams-and-nearest-service.sql
+new file mode 100644
+index 0000000..91665f8
+--- /dev/null
++++ b/supabase/update-diagrams-and-nearest-service.sql
+@@ -0,0 +1,339 @@
++-- ONE-TIME UPDATE for the live database. Run this whole file once in Supabase -> SQL Editor.
++-- Safe to run twice; no rows are deleted.
++--
++--   Part A: the table "Plot_Surroundings" becomes "Analytical_diagrams" (key "diagramID"), and its three
++--           functions (project_surroundings, save_surroundings, has_recent_surroundings) are re-created with the new name.
++--   Part B: "Site_Indicator" gets a column "nearestService" (the service kind of the nearest-services rows),
++--           the two functions that write it are re-created, and the old rows are moved from "facade" to the new column.
++--
++-- It does not change the default of "Analysis".status.
++
++-- =====================================================================================================
++-- PART A: Analytical_diagrams
++-- =====================================================================================================
++
++-- The data of the analytical diagrams (land use and roads), saved per plot in "Analytical_diagrams".
++-- The sun and wind diagram is not saved: it is the same for all of Riyadh.
++-- Run it once in Supabase -> SQL Editor, AFTER analysis-reuse.sql. Safe to run twice; nothing is deleted.
++--
++-- The rule:
++--   * For every project, whatever the user's role: the surroundings are fetched and saved with the analysis
++--     (only architects see the diagrams, but a homeowner who becomes an architect finds them ready).
++--   * A plot's surroundings fetched less than 6 months ago (by anyone) are reused, not fetched again.
++--   * After 6 months a NEW row is added; the old rows stay, so old projects keep the diagrams of their time.
++--   * One row per plot in each 6 months: save_surroundings locks the plot while it checks and saves.
++--   * A project older than 6 months shows the surroundings of its own time (fetched up to 6 months after its
++--     analysis); when it has none, the newest ones. "Update this project" makes it new again, and then it
++--     takes surroundings less than 6 months old (or fetches them).
++
++-- 0. The table used to be called "Plot_Surroundings" (key "surroundingsID"). If it still has the old names,
++--    they are renamed here; if it already has the new ones, nothing happens. No data is touched.
++do $$
++begin
++  if to_regclass('public."Plot_Surroundings"') is not null
++     and to_regclass('public."Analytical_diagrams"') is null then
++    alter table public."Plot_Surroundings" rename to "Analytical_diagrams";
++  end if;
++  if exists (select 1 from information_schema.columns
++             where table_schema = 'public' and table_name = 'Analytical_diagrams' and column_name = 'surroundingsID') then
++    alter table public."Analytical_diagrams" rename column "surroundingsID" to "diagramID";
++  end if;
++  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_pkey'
++             and conrelid = to_regclass('public."Analytical_diagrams"')) then
++    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_pkey" to "Analytical_diagrams_pkey";
++  end if;
++  if exists (select 1 from pg_constraint where conname = 'Plot_Surroundings_plotID_fkey'
++             and conrelid = to_regclass('public."Analytical_diagrams"')) then
++    alter table public."Analytical_diagrams" rename constraint "Plot_Surroundings_plotID_fkey" to "Analytical_diagrams_plotID_fkey";
++  end if;
++  if to_regclass('public."Plot_Surroundings_plot_idx"') is not null then
++    alter index public."Plot_Surroundings_plot_idx" rename to "Analytical_diagrams_plot_idx";
++  end if;
++end $$;
++
++-- 1. The table (Plot 1 —— 0..* Analytical_diagrams)
++create table if not exists public."Analytical_diagrams" (
++  "diagramID" uuid primary key default gen_random_uuid(),
++  "plotID"         uuid not null references public."Plot" ("plotID") on delete cascade,
++  "landUseData"    jsonb not null,
++  "roadsData"      jsonb not null,
++  "fetchedAt"      timestamptz not null default now()
++);
++
++alter table public."Analytical_diagrams" drop column if exists radius;
++alter table public."Analytical_diagrams" drop column if exists source;
++
++create index if not exists "Analytical_diagrams_plot_idx"
++  on public."Analytical_diagrams" ("plotID", "fetchedAt" desc);
++
++alter table public."Analytical_diagrams" enable row level security;
++
++-- the user reads the surroundings of the plots in their own projects (writing is only through save_surroundings)
++drop policy if exists "Users can view surroundings of their plots" on public."Analytical_diagrams";
++create policy "Users can view surroundings of their plots" on public."Analytical_diagrams"
++  for select to authenticated
++  using (exists (
++    select 1 from public."Analysis" a
++    join public."Project" p on p."analysisID" = a."analysisID"
++    where a."plotID" = "Analytical_diagrams"."plotID"
++      and p."userID" = (select auth.uid())
++  ));
++
++
++-- 2. The surroundings a project shows. null = none saved (the website then fetches them and saves them).
++create or replace function public.project_surroundings(p_project uuid)
++returns jsonb
++language plpgsql
++stable
++security definer
++set search_path = public
++as $$
++declare
++  v_user uuid := auth.uid();
++  v_plot uuid;
++  v_date timestamptz;
++  v_row  public."Analytical_diagrams";
++begin
++  if v_user is null then
++    raise exception 'Not signed in' using errcode = '28000';
++  end if;
++
++  select a."plotID", a."analysisDate" into v_plot, v_date
++    from public."Project" p
++    join public."Analysis" a on a."analysisID" = p."analysisID"
++    where p."projectID" = p_project and p."userID" = v_user;
++  if v_plot is null then
++    raise exception 'Project not found';
++  end if;
++  if v_date > now() - interval '6 months' then
++    -- a recent analysis: surroundings less than 6 months old
++    select * into v_row from public."Analytical_diagrams"
++      where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
++      order by "fetchedAt" desc limit 1;
++  else
++    -- an analysis older than 6 months: the surroundings of its own time, otherwise the newest ones
++    select * into v_row from public."Analytical_diagrams"
++      where "plotID" = v_plot and "fetchedAt" <= v_date + interval '6 months'
++      order by "fetchedAt" desc limit 1;
++    if v_row."diagramID" is null then
++      select * into v_row from public."Analytical_diagrams"
++        where "plotID" = v_plot
++        order by "fetchedAt" desc limit 1;
++    end if;
++  end if;
++
++  if v_row."diagramID" is null then
++    return null;
++  end if;
++  return jsonb_build_object(
++    'landUseData', v_row."landUseData",
++    'roadsData',   v_row."roadsData",
++    'fetchedAt',   v_row."fetchedAt"
++  );
++end;
++$$;
++
++revoke all on function public.project_surroundings(uuid) from public, anon;
++grant execute on function public.project_surroundings(uuid) to authenticated;
++
++
++-- 3. Saves the surroundings the website fetched for a project (every role).
++--    Not saved again when the plot already has surroundings less than 6 months old (no duplicates).
++create or replace function public.save_surroundings(
++  p_project  uuid,
++  p_land_use jsonb,
++  p_roads    jsonb
++) returns boolean
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_user uuid := auth.uid();
++  v_plot uuid;
++begin
++  if v_user is null then
++    raise exception 'Not signed in' using errcode = '28000';
++  end if;
++
++  select a."plotID" into v_plot
++    from public."Project" p
++    join public."Analysis" a on a."analysisID" = p."analysisID"
++    where p."projectID" = p_project and p."userID" = v_user;
++  if v_plot is null then
++    raise exception 'Project not found';
++  end if;
++  if jsonb_typeof(p_land_use) is distinct from 'object' or jsonb_typeof(p_roads) is distinct from 'object' then
++    raise exception 'p_land_use and p_roads must be JSON objects';
++  end if;
++
++  -- one save at a time for the same plot: the analysis page and the results page can save at the same moment,
++  -- and without this both would see no row and both insert (two rows for one plot)
++  perform pg_advisory_xact_lock(hashtext(v_plot::text));
++
++  if exists (
++    select 1 from public."Analytical_diagrams"
++    where "plotID" = v_plot and "fetchedAt" > now() - interval '6 months'
++  ) then
++    return false; -- already saved (by this or another user)
++  end if;
++
++  insert into public."Analytical_diagrams" ("plotID", "landUseData", "roadsData")
++    values (v_plot, p_land_use, p_roads);
++  return true;
++end;
++$$;
++
++revoke all on function public.save_surroundings(uuid, jsonb, jsonb) from public, anon;
++grant execute on function public.save_surroundings(uuid, jsonb, jsonb) to authenticated;
++
++
++-- 4. For the analysis page: does this plot have surroundings less than 6 months old?
++--    Then it does not start fetching them. Only answers yes or no.
++create or replace function public.has_recent_surroundings(p_boundary jsonb)
++returns boolean
++language sql
++stable
++security definer
++set search_path = public
++as $$
++  select auth.uid() is not null and p_boundary is not null and exists (
++    select 1
++    from public."Plot" pl
++    join public."Analytical_diagrams" s on s."plotID" = pl."plotID"
++    where pl."boundaryKey" = md5(p_boundary::text)
++      and s."fetchedAt" > now() - interval '6 months'
++  );
++$$;
++
++revoke all on function public.has_recent_surroundings(jsonb) from public, anon;
++grant execute on function public.has_recent_surroundings(jsonb) to authenticated;
++
++
++-- =====================================================================================================
++-- PART B: Site_Indicator.nearestService
++-- =====================================================================================================
++
++-- 1. The column (nothing breaks while it is empty)
++alter table public."Site_Indicator" add column if not exists "nearestService" text;
++
++-- 2. The functions that write the nearest-services rows now fill it
++drop function if exists public.save_site_indicators(uuid, jsonb);
++
++create or replace function public.save_site_indicators(
++  p_project uuid,
++  p_rows    jsonb,
++  p_version text default 'v1',
++  p_renew   boolean default false
++) returns integer
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_user     uuid := auth.uid();
++  v_analysis uuid;
++  v_count    integer;
++begin
++  if v_user is null then
++    raise exception 'Not signed in' using errcode = '28000';
++  end if;
++
++  select "analysisID" into v_analysis
++    from public."Project"
++    where "projectID" = p_project and "userID" = v_user;
++  if v_analysis is null then
++    raise exception 'Project not found';
++  end if;
++
++  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) = 0 then
++    raise exception 'p_rows must be a non-empty JSON array';
++  end if;
++
++  delete from public."Site_Indicator" where "analysisID" = v_analysis;
++
++  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
++    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
++    from jsonb_to_recordset(p_rows)
++      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
++    where r."indicatorName" is not null;
++  get diagnostics v_count = row_count;
++
++  update public."Analysis"
++    set status  = 'completed',
++        version = coalesce(p_version, version),
++        "analysisDate" = case when p_renew then now() else "analysisDate" end
++    where "analysisID" = v_analysis;
++
++  return v_count;
++end;
++$$;
++
++revoke all on function public.save_site_indicators(uuid, jsonb, text, boolean) from public, anon;
++grant execute on function public.save_site_indicators(uuid, jsonb, text, boolean) to authenticated;
++
++
++drop function if exists public.add_services(uuid, jsonb, jsonb);
++
++create or replace function public.add_services(
++  p_project uuid,
++  p_rows    jsonb
++) returns boolean
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_user     uuid := auth.uid();
++  v_analysis uuid;
++begin
++  if v_user is null then
++    raise exception 'Not signed in' using errcode = '28000';
++  end if;
++
++  select "analysisID" into v_analysis
++    from public."Project"
++    where "projectID" = p_project and "userID" = v_user;
++  if v_analysis is null then
++    raise exception 'Project not found';
++  end if;
++
++  if jsonb_typeof(p_rows) is distinct from 'array' then
++    raise exception 'p_rows must be a JSON array';
++  end if;
++
++  -- only for a saved analysis that has no services yet
++  if not exists (select 1 from public."Site_Indicator" where "analysisID" = v_analysis)
++     or exists (
++       select 1 from public."Site_Indicator"
++       where "analysisID" = v_analysis and "indicatorName" in ('serviceDistance', 'serviceCount')
++     ) then
++    return false;
++  end if;
++
++  insert into public."Site_Indicator" ("analysisID", "indicatorName", facade, "nearestService", value, unit)
++    select v_analysis, r."indicatorName", r.facade, r."nearestService", r.value, r.unit
++    from jsonb_to_recordset(p_rows)
++      as r ("indicatorName" text, facade text, "nearestService" text, value double precision, unit text)
++    where r."indicatorName" in ('serviceDistance', 'serviceCount');
++  return found;
++end;
++$$;
++
++revoke all on function public.add_services(uuid, jsonb) from public, anon;
++grant execute on function public.add_services(uuid, jsonb) to authenticated;
++
++
++-- 3. The rows saved before: the service kind moves from "facade" to "nearestService"
++update public."Site_Indicator"
++   set "nearestService" = facade,
++       facade = null
++ where "indicatorName" in ('serviceDistance', 'serviceCount')
++   and "nearestService" is null
++   and facade is not null;
++
++-- 4. Check (should return no rows): a service row still holding its kind in "facade", or without a kind
++select "indicatorID", "indicatorName", facade, "nearestService"
++  from public."Site_Indicator"
++ where "indicatorName" in ('serviceDistance', 'serviceCount')
++   and (facade is not null or "nearestService" is null);

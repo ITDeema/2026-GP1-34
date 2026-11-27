@@ -45,7 +45,9 @@ const ar = {
   "profile.myAccount": "حسابي",
 
   "home.title": "مرحبًا بعودتك إلى معمار",
+  "home.titleFirst": "مرحبًا بك في معمار",
   "home.subtitle": "ابدأ مشروعًا جديدًا أو تابع مشاريعك الأخيرة",
+  "home.subtitleNew": "ابدأ مشروعًا جديدًا",
   "home.recent": "المشاريع الأخيرة",
   "home.newProject": "مشروع جديد",
   "home.newProjectHint": "ابدأ بتحليل قطعة أرض جديدة",
@@ -218,7 +220,9 @@ const en: Record<TranslationKey, string> = {
   "profile.myAccount": "My Account",
 
   "home.title": "Welcome back to Maamar",
+  "home.titleFirst": "Welcome to Maamar",
   "home.subtitle": "Start a new project or continue your recent projects",
+  "home.subtitleNew": "Start a new project",
   "home.recent": "Recent projects",
   "home.newProject": "New Project",
   "home.newProjectHint": "Start analyzing a new plot",

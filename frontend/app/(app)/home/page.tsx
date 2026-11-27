@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/Badge";
 import Button from "@/components/Button";
@@ -17,6 +17,7 @@ import { useT } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
 import { plotCopy } from "@/lib/plot-copy";
 import { useResults } from "@/lib/results";
+import { createClient } from "@/lib/supabase/client";
 import type { AnalysisResult } from "@/lib/results";
 
 const STEPS: { title: TranslationKey; text: TranslationKey }[] = [
@@ -29,6 +30,28 @@ export default function HomePage() {
   const { t, lang } = useT();
   const { results, loaded, loadError, setSaved } = useResults();
   const [removing, setRemoving] = useState<AnalysisResult | null>(null);
+  // The first visit after creating the account says "Welcome to Maamar", later ones "Welcome back".
+  // The account remembers it (user_metadata.welcomed), so it is the same on every device. null = not known yet.
+  const [firstVisit, setFirstVisit] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+      const user = data.user;
+      const first = Boolean(user) && user?.user_metadata?.welcomed !== true;
+      setFirstVisit(first);
+      if (first) {
+        supabase.auth.updateUser({ data: { welcomed: true } }).then(({ error }) => {
+          if (error) console.warn("Welcome flag not saved:", error.message);
+        });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function confirmRemove() {
     if (removing) setSaved(removing.id, false);
@@ -58,8 +81,15 @@ export default function HomePage() {
           <div className="grid items-center gap-8 p-8 pb-14 lg:grid-cols-[1.2fr_1fr] lg:p-10 lg:pb-16">
             <div>
               <p className="mb-3 text-sm font-bold text-gold-300">{t("home.heroKicker")}</p>
-              <h1 className="font-heading text-3xl font-bold leading-[1.4] sm:text-4xl">{t("home.title")}</h1>
-              <p className="mt-3 max-w-xl text-base leading-8 text-white/75">{t("home.subtitle")}</p>
+              {/* hidden (but keeping its place) until it is known whether this is the first visit */}
+              <h1
+                className={`font-heading text-3xl font-bold leading-[1.4] sm:text-4xl ${firstVisit === null ? "invisible" : ""}`}
+              >
+                {t(firstVisit ? "home.titleFirst" : "home.title")}
+              </h1>
+              <p className="mt-3 max-w-xl text-base leading-8 text-white/75">
+                {t(firstVisit || noProjects ? "home.subtitleNew" : "home.subtitle")}
+              </p>
               <Link
                 href="/select-plot"
                 className="mt-7 inline-flex items-center gap-3 rounded-control bg-gold-500 px-6 py-3.5 text-sm font-bold text-navy-950 transition-colors hover:bg-gold-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"

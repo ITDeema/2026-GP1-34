@@ -110,6 +110,11 @@ export type FacadeNeighbours = {
   modelAcross?: string;
 };
 
+// Estimated data in the indicators of one wall (the page marks its values with a star):
+// buildingHeight: no height was entered and GBA has none for the house (or the plot is vacant): 14 m;
+// setbacks: a vacant plot's building is drawn from setbacks that rest on an estimated street width or main façade.
+export type IndicatorEstimate = { buildingHeight: boolean; setbacks: boolean };
+
 export type FacadeIndicatorsResponse = {
   mainFacade: FacadeDirection;
   mainFacadeEstimated?: boolean; // true = no street runs along the plot (nearest street in front, or longest edge)
@@ -131,6 +136,7 @@ export type FacadeIndicatorsResponse = {
       wind: { good: number | null; bad: number | null }; // degrees, dataset Wind_block_good / Wind_block_bad
       facadeLength: number | null; // m, dataset facade_length (the house walls facing this way)
       neighbours: FacadeNeighbours; // dataset neighbor_use, across_use, street_*, dist, height
+      indicatorsEstimated?: IndicatorEstimate; // what is estimated in this wall's indicators (older backends: none)
     }
   >;
 };

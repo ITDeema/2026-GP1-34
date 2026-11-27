@@ -12,14 +12,9 @@ import { hasReusableAnalysis } from "@/lib/analysis-store";
 import { hasRecentSurroundings, saveSurroundings } from "@/lib/surroundings-store";
 import { loadSurroundings, prefetchDiagrams } from "@/lib/site-surroundings";
 import { boundaryGeoJson, useResults } from "@/lib/results";
+import { DEMO_ALLOWED, clearAnalysisRequest, getAnalysisRequest } from "@/lib/analysis-request";
 
 type Status = "running" | "failed" | "done";
-
-function readNumber(value: string | null): number | null {
-  if (value === null || value.trim() === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
 
 function CheckIcon() {
   return (
@@ -56,19 +51,15 @@ function AnalyzingContent() {
   const [step, setStep] = useState(0);
   const [attempt, setAttempt] = useState(0);
 
-  const lat = readNumber(params.get("lat"));
-  const lng = readNumber(params.get("lng"));
-  const area = readNumber(params.get("area"));
-  const height = readNumber(params.get("height")); // optional
-  const demo = params.get("demo");
-  const villaTypeParam = params.get("villaType");
-
-  const villaType =
-  villaTypeParam === "attachedBoth" ||
-  villaTypeParam === "attachedOne" ||
-  villaTypeParam === "detached"
-    ? villaTypeParam
-    : null;
+  // What the plot page checked and handed over in memory (never read from the link, so it cannot be edited).
+  // Nothing (the page was opened by its address, or reloaded): back to the plot page.
+  const [request] = useState(() => getAnalysisRequest());
+  const lat = request?.lat ?? null;
+  const lng = request?.lng ?? null;
+  const area = request?.area ?? null;
+  const height = request?.height ?? null; // optional
+  const villaType = request?.villaType ?? null;
+  const demo = DEMO_ALLOWED ? params.get("demo") : null;
   const valid =
   lat !== null && lng !== null && area !== null && villaType !== null;
 
@@ -141,6 +132,7 @@ function AnalyzingContent() {
             .catch((error: unknown) => console.warn("Surroundings not saved:", error));
         }
         setStatus("done");
+        clearAnalysisRequest(); // done: going back to this page does not run it again
         redirect = setTimeout(() => router.replace(`/results/${id}`), 900);
       })
       .catch((error: unknown) => {

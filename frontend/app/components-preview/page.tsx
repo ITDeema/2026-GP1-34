@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notFound } from "next/navigation";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Badge from "@/components/Badge";
@@ -8,6 +9,12 @@ import Input from "@/components/Input";
 import Modal from "@/components/Modal";
 
 export default function ComponentsPreview() {
+  // a page for developing only: on the real site it does not exist
+  if (process.env.NODE_ENV === "production") notFound();
+  return <Preview />;
+}
+
+function Preview() {
   const [open, setOpen] = useState(false);
 
   return (

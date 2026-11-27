@@ -8,7 +8,7 @@ import { fetchDensity, fetchFacadeIndicators, fetchNoise, fetchServices, fetchWi
 import type { ServicesResponse } from "@/lib/site-api";
 import { SERVICE_KINDS } from "@/lib/neighbourhood";
 import type { Service } from "@/lib/neighbourhood";
-import type { Design, FacadeNeighbours, NoiseRoadClass, WindDirection } from "@/lib/site-api";
+import type { Design, FacadeNeighbours, IndicatorEstimate, NoiseRoadClass, WindDirection } from "@/lib/site-api";
 import { fetchNeighborhood, lookupPlot } from "@/lib/analysis";
 import type { LatLng } from "@/lib/geo";
 import { plotEdges } from "@/lib/plot-facade";
@@ -67,6 +67,8 @@ export type IndicatorsData = {
   facades: Record<Facade, FacadeIndicators>;
   site: SiteIndicators;
   neighbours: Record<Facade, FacadeNeighbours> | null; // null until the backend answers (the card shows samples)
+  // What is estimated in the indicators of each wall (a star on its values). Missing = nothing estimated.
+  estimated?: Partial<Record<Facade, IndicatorEstimate>> | null;
   shown?: Facade[] | null; // the façades on display (set by the dashboard for the report, never saved); null = all eight
   // The nearest services around the plot (saved with the analysis for every role). null when they could not
   // be loaded: the homeowner's card then loads them on its own and they are added to the saved analysis.
@@ -264,6 +266,9 @@ export async function fetchIndicators(
         facade.shade = take(got.shade?.summer, facade.shade);
         facade.wind = take(got.wind?.good, facade.wind);
         facade.sky = take(got.sky, facade.sky);
+        if (got.indicatorsEstimated) {
+          data.estimated = { ...(data.estimated ?? {}), [WIND_FACADE[d]]: got.indicatorsEstimated };
+        }
       });
       if (real.site) {
         data.site.temperature = real.site.summerMaxTemp;
@@ -353,10 +358,16 @@ export const MAX_WIND_BLOCK = 45;
 
 export type Level = "low" | "medium" | "high";
 const THRESHOLDS: Record<MetricKey, [number, number]> = {
-  radiation: [1.81, 2.4], // summer, kWh/m²/day: low < 1.81, medium 1.81–2.40, high > 2.40 (team values)
-  shade: [0.3, 0.55], // TEMPORARY: replace with the team values from the dataset (Shaded_Pct_Summer)
-  wind: [1.4, 11.5], // degrees: low < 1.4, medium 1.4–11.5, high > 11.5 (sample of 110 plots, to update)
-  sky: [0.77, 0.97], // TEMPORARY: thirds of a 110-plot sample after the wall formula fix (Dozier & Frew); update from the dataset
+  // summer, kWh/m²/day: low < 1.81, medium 1.81–2.40, high > 2.40. About the thirds of the range between the least
+  // (south, 1.30) and the most (east, 3.00) exposed unobstructed wall in Riyadh (EPW, summer)
+  radiation: [1.81, 2.4],
+  // share of the summer sunlit hours in shade: low < 1 %, medium 1–10 %, high > 10 %. The thirds (33rd and 67th
+  // percentiles: 0.1 % and 9.7 %) of 4,039 façades of 1,000 random residential plots of Riyadh, rounded
+  shade: [0.01, 0.1],
+  wind: [1.4, 11.5], // degrees: low < 1.4, medium 1.4–11.5, high > 11.5 (sample of 110 plots)
+  // sky view: low < 0.6, medium 0.6–0.9, high > 0.9. The open low-rise Local Climate Zone (LCZ 6, the villa
+  // districts) has a sky view factor of 0.6–0.9 (Stewart & Oke 2012)
+  sky: [0.6, 0.9],
 };
 
 export function levelOf(metric: MetricKey, value: number): Level {
@@ -448,4 +459,3 @@ export function metricFraction(metric: MetricKey, value: number): number {
   if (metric === "wind") return clamp01(value / MAX_WIND_BLOCK);
   return clamp01(value);
 }
-

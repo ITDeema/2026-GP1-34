@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { DEMO_ALLOWED, setPlotPrefill } from "@/lib/analysis-request";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -72,7 +73,7 @@ function ResultsContent() {
   const { t, lang } = useT();
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  const demo = params.get("demo"); // "indicators-error" or "export-error" (for testing) 
+  const demo = DEMO_ALLOWED ? params.get("demo") : null; // "indicators-error" or "export-error" (testing only)
   const router = useRouter();
   const { results, loaded, setSaved, rename, markOpened, setRole, markRenewed } = useResults();
   const result = results.find((r) => r.id === id);
@@ -298,9 +299,14 @@ function ResultsContent() {
   // this project stays as it is.
   function analyzeAgain() {
     if (!result) return;
-    const query = new URLSearchParams({ lat: String(result.lat), lng: String(result.lng) });
-    if (result.villaType) query.set("villaType", result.villaType);
-    router.push(`/select-plot?${query.toString()}`);
+    // handed over in memory, not in the link (see lib/analysis-request)
+    const type = result.villaType;
+    setPlotPrefill({
+      lat: result.lat,
+      lng: result.lng,
+      villaType: type === "attachedBoth" || type === "attachedOne" || type === "detached" ? type : null,
+    });
+    router.push("/select-plot");
   }
 
   return (
