@@ -53,7 +53,7 @@ cd <repository>
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv\Scripts\activate        # mac: .venv\bin\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
