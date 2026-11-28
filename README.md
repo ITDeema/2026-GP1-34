@@ -35,7 +35,8 @@ Maamar-GP/
 ├── backend/      # FastAPI analysis services
 ├── supabase/     # SQL schema and migrations
 ├── docs/         # Sprint documents
-└── DataSet_Phase1.ipynb   # Dataset building notebook
+├── DataSet_Phase1.ipynb   # Dataset building notebook
+└── DataSet_Phase2.ipynb   # Design-decision labels (rules v1.2)
 ```
 
 ## Launch Instructions
